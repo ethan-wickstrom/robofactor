@@ -1,0 +1,25 @@
+[project]
+name = "resting-agent"
+version = "0.1.0"
+description = "Autonomous agent for building RESTful APIs"
+readme = "README.md"
+authors = [
+    { name = "ethan-wickstrom", email = "e.t.wickstrom@wustl.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "dspy-ai>=2.6.27",
+]
+
+[project.scripts]
+resting-agent = "resting_agent:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.16.1",
+    "ruff>=0.11.13",
+]
