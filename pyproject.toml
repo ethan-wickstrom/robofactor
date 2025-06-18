@@ -33,7 +33,7 @@ Issues = "https://github.com/ethan-wickstrom/robofactor/issues"
 Documentation = "https://github.com/ethan-wickstrom/robofactor#readme"
 
 [project.scripts]
-robofactor = "robofactor:main"
+robofactor = "robofactor.main:app"
 
 [build-system]
 requires = ["hatchling"]
