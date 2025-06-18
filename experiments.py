@@ -6,8 +6,10 @@ import warnings
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 import subprocess
 import tempfile
+from pathlib import Path
 
 import dspy
+import typer
 from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.panel import Panel
@@ -118,7 +120,7 @@ def check_syntax(code: str) -> Tuple[bool, Optional[str], Optional[str]]:
         return False, None, f"Syntax Error: {e}"
 
 
-def check_code_quality(code: str, func_name: str) -> CodeQualityScores:
+def check_code_quality(code: str, func_name: Optional[str] = None) -> CodeQualityScores:
     """
     Analyzes a string of Python code for quality metrics.
 
@@ -128,9 +130,12 @@ def check_code_quality(code: str, func_name: str) -> CodeQualityScores:
     3.  Typing: Checks for the presence of type hints on arguments and return values.
     4.  Docstrings: Verifies the existence of a docstring for the specified function.
 
+    If `func_name` is provided, analysis is focused on that function. Otherwise,
+    it analyzes all functions found in the code.
+
     Args:
-        code: A string containing the Python code of a single function to analyze.
-        func_name: The name of the function within the code to analyze.
+        code: A string containing the Python code to analyze.
+        func_name: The optional name of a specific function to analyze.
 
     Returns:
         A CodeQualityScores object containing the calculated scores and a list
@@ -144,8 +149,6 @@ def check_code_quality(code: str, func_name: str) -> CodeQualityScores:
             tmp.write(code)
             tmp_path = tmp.name
 
-        # Run flake8 to get linting and complexity issues.
-        # We use check=False to prevent raising an exception on non-zero exit codes.
         result = subprocess.run(
             ["flake8", "--max-complexity=10", tmp_path],
             capture_output=True,
@@ -154,45 +157,59 @@ def check_code_quality(code: str, func_name: str) -> CodeQualityScores:
         )
         all_issues = result.stdout.strip().splitlines() if result.stdout else []
 
-        # Separate complexity warnings from other linting issues.
         complexity_warnings = [issue for issue in all_issues if "C901" in issue]
         linting_issues = [issue for issue in all_issues if "C901" not in issue]
 
-        # Calculate scores based on flake8 output.
         complexity_score = 1.0 if not complexity_warnings else 0.0
         linting_score = max(0.0, 1.0 - (0.1 * len(linting_issues)))
 
-        # Initialize scores that depend on AST parsing.
         docstring_score, typing_score = 0.0, 0.0
         try:
             tree = ast.parse(code)
-            func_node = next(
-                n
-                for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef) and n.name == func_name
+            all_funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+
+            if not all_funcs:
+                return CodeQualityScores(
+                    linting_score=linting_score,
+                    complexity_score=complexity_score,
+                    typing_score=0.0,
+                    docstring_score=0.0,
+                    linting_issues=linting_issues,
+                )
+
+            target_funcs = (
+                [f for f in all_funcs if f.name == func_name] if func_name else all_funcs
             )
 
-            # Score for docstring presence.
-            docstring_score = 1.0 if ast.get_docstring(func_node) else 0.0
+            if not target_funcs:
+                return CodeQualityScores(
+                    linting_score=linting_score,
+                    complexity_score=complexity_score,
+                    typing_score=0.0,
+                    docstring_score=0.0,
+                    linting_issues=linting_issues,
+                )
 
-            # Score for type hint coverage, broken down for clarity.
-            args = func_node.args
-            num_typed_args = sum(1 for arg in args.args if arg.annotation is not None)
-            num_total_args = len(args.args)
-            has_return_annotation = 1 if func_node.returns is not None else 0
+            docstring_score = sum(
+                1.0 for f in target_funcs if ast.get_docstring(f)
+            ) / len(target_funcs)
 
-            # The total number of elements that can be typed are the arguments plus the return value.
-            total_typeable_elements = num_total_args + 1
-            if total_typeable_elements > 1:
-                typed_elements = num_typed_args + has_return_annotation
-                typing_score = typed_elements / total_typeable_elements
-            else:
-                # Handles functions with no arguments.
-                typing_score = float(has_return_annotation)
+            typed_elements = 0
+            typeable_elements = 0
+            for func_node in target_funcs:
+                args = func_node.args
+                num_typed_args = sum(1 for arg in args.args if arg.annotation is not None)
+                num_total_args = len(args.args)
+                has_return_annotation = 1 if func_node.returns is not None else 0
 
-        except (SyntaxError, StopIteration):
-            # If code has a syntax error or the function is not found,
-            # docstring and typing scores remain 0.0.
+                typed_elements += num_typed_args + has_return_annotation
+                typeable_elements += num_total_args + 1
+
+            typing_score = (
+                typed_elements / typeable_elements if typeable_elements > 0 else 0.0
+            )
+
+        except SyntaxError:
             pass
 
         return CodeQualityScores(
@@ -204,7 +221,6 @@ def check_code_quality(code: str, func_name: str) -> CodeQualityScores:
         )
 
     finally:
-        # Ensure the temporary file is always deleted, even if errors occur.
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
@@ -284,19 +300,29 @@ class RefactoringEvaluator(dspy.Module):
         tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
 
         is_valid, func_name, _ = check_syntax(code)
-        if not is_valid or not func_name:
+        if not is_valid:
             return 0.0
 
-        quality = check_code_quality(code, func_name)
-        passed_tests = check_functional_correctness(code, func_name, tests)
-        functional_score = (passed_tests / len(tests)) if tests else 1.0
+        # Handle module vs function refactoring
+        if not tests:  # Module refactoring
+            quality = check_code_quality(code)  # No func_name, analyze whole module
+            functional_score = 1.0  # Assume functional if syntax is ok, since no tests
+        else:  # Function refactoring
+            if not func_name:
+                return 0.0  # Cannot test if no function found in snippet
+            quality = check_code_quality(code, func_name)
+            passed_tests = check_functional_correctness(code, func_name, tests)
+            functional_score = (passed_tests / len(tests)) if tests else 1.0
 
         eval_result = self.evaluator(
             code_snippet=code,
             quality_scores=quality.model_dump_json(),
             functional_score=functional_score,
         )
-        return eval_result.final_score
+        try:
+            return float(eval_result.final_score)
+        except (ValueError, TypeError):
+            return 0.0
 
 
 def get_training_data() -> List[dspy.Example]:
@@ -453,7 +479,8 @@ def evaluate_refactoring(
     Performs a full evaluation of the refactored code without any I/O.
 
     This function checks syntax, code quality, and functional correctness, returning
-    a structured result. It is a pure function with no side effects.
+    a structured result. It handles both single-function and whole-module
+    refactoring evaluation based on the presence of test cases in the example.
 
     Args:
         prediction: The dspy.Prediction object containing the refactored code.
@@ -466,7 +493,7 @@ def evaluate_refactoring(
     is_valid, func_name, err = check_syntax(code)
     syntax_result = SyntaxCheckResult(is_valid, func_name, err)
 
-    if not is_valid or not func_name:
+    if not is_valid:
         return EvaluationResult(
             code=code,
             syntax_check=syntax_result,
@@ -474,12 +501,28 @@ def evaluate_refactoring(
             functional_check=None,
         )
 
-    quality = check_code_quality(code, func_name)
-
     raw_tests = example.get("test_cases")
     tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
-    passed_count = check_functional_correctness(code, func_name, tests)
-    functional_result = FunctionalCheckResult(passed_count, len(tests))
+
+    if not tests:
+        # Module-level evaluation (no test cases)
+        quality = check_code_quality(code)  # Analyze all functions
+        functional_result = FunctionalCheckResult(passed_tests=0, total_tests=0)
+    else:
+        # Function-level evaluation
+        if not func_name:
+            # Tests provided, but no function found in the code snippet.
+            err_msg = "Tests provided, but no function found in code snippet."
+            return EvaluationResult(
+                code=code,
+                syntax_check=SyntaxCheckResult(is_valid, None, err_msg),
+                quality_scores=None,
+                functional_check=None,
+            )
+
+        quality = check_code_quality(code, func_name)
+        passed_count = check_functional_correctness(code, func_name, tests)
+        functional_result = FunctionalCheckResult(passed_count, len(tests))
 
     return EvaluationResult(
         code=code,
@@ -548,7 +591,12 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
     table.add_column(style="bold magenta")
 
     func_check = result.functional_check
-    table.add_row("Functional Equivalence:", f"{func_check.passed_tests} / {func_check.total_tests}")
+    if func_check.total_tests > 0:
+        table.add_row(
+            "Functional Equivalence:", f"{func_check.passed_tests} / {func_check.total_tests}"
+        )
+    else:
+        table.add_row("Functional Equivalence:", "N/A (no tests)")
 
     quality = result.quality_scores
     table.add_row("Linting Score:", f"{quality.linting_score:.2f}")
@@ -564,8 +612,20 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
         )
 
 
-def main():
-    import warnings
+def main(
+    self_refactor: bool = typer.Option(
+        False,
+        "--self-refactor",
+        help="Enable self-refactoring mode to refactor this script.",
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Write the refactored code back to the file in self-refactor mode."
+    ),
+    optimize: bool = typer.Option(
+        False, "--optimize", help="Run the DSPy optimizer to generate a new `optimized.json`."
+    ),
+):
+    """A DSPy-powered tool to analyze, plan, and refactor Python code."""
     warnings.filterwarnings("ignore")
     console = Console()
 
@@ -573,20 +633,12 @@ def main():
     prompt_llm = dspy.LM("xai/grok-3-mini-fast", max_tokens=32000)
     dspy.configure(lm=task_llm)
 
-    # Check if optimized.json exists and load if available
-    if os.path.exists("optimized.json"):
-        console.print("Loading optimized model from optimized.json...")
-        refactorer = CodeRefactor()
-        self_correcting_refactorer = dspy.Refine(
-            module=refactorer,
-            reward_fn=RefactoringEvaluator(),
-            threshold=0.9,
-            N=3,
+    optimizer_path = Path("optimized.json")
+
+    if optimize or not optimizer_path.exists():
+        console.print(
+            "[yellow]No optimized model found or --optimize flag set. Running optimization...[/yellow]"
         )
-        self_correcting_refactorer.load("optimized.json")
-        console.print("[green]Optimized model loaded successfully![/green]")
-    else:
-        console.print("No optimized model found. Running optimization...")
         teleprompter = dspy.MIPROv2(
             metric=RefactoringEvaluator(),
             prompt_model=prompt_llm,
@@ -598,141 +650,62 @@ def main():
             CodeRefactor(), trainset=get_training_data(), requires_permission_to_run=False
         )
         self_correcting_refactorer = dspy.Refine(
-            module=refactorer,
-            reward_fn=RefactoringEvaluator(),
-            threshold=0.9,
-            N=3,
+            module=refactorer, reward_fn=RefactoringEvaluator(), threshold=0.9, N=3
         )
-        console.print("Optimization complete. Saving to optimized.json...")
-        self_correcting_refactorer.save("optimized.json")
-
-    code_to_refactor = """
-    def check_code_quality(code: str, func_name: str) -> CodeQualityScores:
-        \"\"\"Analyzes code for linting, complexity, typing, and docstrings.\"\"\"
-        import tempfile
-        import os
-        import subprocess
-
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-            tmp.write(code)
-            tmp_path = tmp.name
-
-        # Run flake8 as a subprocess
-        result = subprocess.run(
-            ["flake8", "--max-complexity=10", tmp_path],
-            capture_output=True,
-            text=True,
+        console.print(f"Optimization complete. Saving to {optimizer_path}...")
+        self_correcting_refactorer.save(str(optimizer_path))
+    else:
+        console.print(f"Loading optimized model from {optimizer_path}...")
+        refactorer = CodeRefactor()
+        self_correcting_refactorer = dspy.Refine(
+            module=refactorer, reward_fn=RefactoringEvaluator(), threshold=0.9, N=3
         )
-        linting_issues = result.stdout.strip().splitlines() if result.stdout else []
-        os.unlink(tmp_path)
-        linting_score = max(0.0, 1.0 - (0.1 * len(linting_issues)))
+        self_correcting_refactorer.load(str(optimizer_path))
+        console.print("[green]Optimized model loaded successfully![/green]")
 
-        complexity_score, docstring_score, typing_score = 1.0, 0.0, 0.0
-        try:
-            tree = ast.parse(code)
-            func_node = next(
-                n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == func_name
-            )
-            if ast.get_docstring(func_node):
-                docstring_score = 1.0
+    if self_refactor:
+        run_self_refactor(console, self_correcting_refactorer, write)
 
-            args = func_node.args
-            typed_args = sum(1 for arg in args.args if arg.annotation is not None)
-            total_args = len(args.args)
-            has_return_type = 1 if func_node.returns is not None else 0
-            typing_score = (
-                (typed_args + has_return_type) / (total_args + 1)
-                if total_args > 0
-                else float(has_return_type)
-            )
 
-        except (SyntaxError, StopIteration):
-            pass
+def run_self_refactor(console: Console, refactorer: dspy.Module, write: bool):
+    """Handles the self-refactoring workflow."""
+    console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
+    script_path = Path(__file__).resolve()
 
-        return CodeQualityScores(
-            linting_score=linting_score,
-            complexity_score=complexity_score,
-            typing_score=typing_score,
-            docstring_score=docstring_score,
-            linting_issues=linting_issues,
-        )
-    """
+    with open(script_path, "r", encoding="utf-8") as f:
+        source_code = f.read()
 
-    # Test case 1: Perfect function with all quality indicators
-    perfect_function_code = '''def add_numbers(x: int, y: int) -> int:
-        """Add two numbers and return the result."""
-        return x + y
-    '''
-
-    # Test case 2: Function with linting issues (long line, missing whitespace)
-    linting_issues_code = '''def multiply(a:int,b:int)->int:
-        """Multiply two numbers."""
-        result=a*b # This is a very long comment that exceeds the typical line length limit and will trigger a linting warning
-        return result
-    '''
-
-    # Test case 3: Function without docstring or type hints
-    minimal_function_code = '''def divide(a, b):
-        if b != 0:
-            return a / b
-        return None
-    '''
-
-    final_example = dspy.Example(
-        code_snippet=code_to_refactor,
-        test_cases=[
-            TestCase(
-                args=[perfect_function_code, "add_numbers"],
-                expected_output={
-                    "linting_score": 1.0,
-                    "complexity_score": 1.0,
-                    "typing_score": 1.0,
-                    "docstring_score": 1.0,
-                    "linting_issues": []
-                }
-            ).model_dump(),
-            TestCase(
-                args=[linting_issues_code, "multiply"],
-                expected_output={
-                    "linting_score": 0.7,  # Assuming ~3 linting issues
-                    "complexity_score": 1.0,
-                    "typing_score": 1.0,
-                    "docstring_score": 1.0,
-                    "linting_issues": [
-                        "E231 missing whitespace after ':'",
-                        "E225 missing whitespace around operator",
-                        "E501 line too long"
-                    ]
-                }
-            ).model_dump(),
-            TestCase(
-                args=[minimal_function_code, "divide"],
-                expected_output={
-                    "linting_score": 1.0,
-                    "complexity_score": 1.0,
-                    "typing_score": 0.0,
-                    "docstring_score": 0.0,
-                    "linting_issues": []
-                }
-            ).model_dump(),
-        ],
-    ).with_inputs("code_snippet")
-
-    console.print(Rule("[bold blue]Refactoring New Code Snippet[/bold blue]"))
     console.print(
         Panel(
-            Syntax(code_to_refactor, "python", theme="monokai", line_numbers=True),
-            title="[bold]Original Code[/bold]",
+            Syntax(source_code, "python", theme="monokai", line_numbers=True),
+            title=f"[bold]Original Code: {script_path.name}[/bold]",
             border_style="blue",
         )
     )
 
-    result_prediction = self_correcting_refactorer(**final_example.inputs())
+    self_refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
+        "code_snippet"
+    )
 
-    display_refactoring_process(console, result_prediction)
-    evaluation = evaluate_refactoring(result_prediction, final_example)
+    prediction = refactorer(**self_refactor_example.inputs())
+    display_refactoring_process(console, prediction)
+
+    evaluation = evaluate_refactoring(prediction, self_refactor_example)
     display_evaluation_results(console, evaluation)
 
+    refactored_code = _extract_python_code(prediction.refactored_code)
+    is_valid, _, err = check_syntax(refactored_code)
+
+    if write:
+        if is_valid:
+            console.print(f"[yellow]Writing refactored code back to {script_path}...[/yellow]")
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(refactored_code)
+            console.print("[green]Self-refactoring complete.[/green]")
+        else:
+            console.print(
+                f"[bold red]Skipping write-back due to syntax errors:[/bold red]\n{err}"
+            )
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
