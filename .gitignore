@@ -1,10 +1,34 @@
-# Python-generated files
+# Byte-compiled / optimized files
 __pycache__/
 *.py[oc]
+
+# Distribution / packaging
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
 # Virtual environments
-.venv
+.venv/
+
+# Caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Test & Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# ML / DSPy artifacts
+mlartifacts/
+mlruns/
+mlflow.db
+optimized.json
+
+# IDE / Editor specific
+.ropeproject/
+
+# Documentation builds
+site/
