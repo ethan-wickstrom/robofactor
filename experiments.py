@@ -2,11 +2,12 @@ import ast
 import json
 import os
 import re
-import warnings
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 import subprocess
 import tempfile
+import textwrap
+import warnings
 from pathlib import Path
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import dspy
 import typer
@@ -18,14 +19,22 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+# --- Constants and Configuration ---
+OPTIMIZER_FILENAME = Path("optimized.json")
+DEFAULT_TASK_LLM = "gemini/gemini-2.5-pro"
+DEFAULT_PROMPT_LLM = "xai/grok-3-mini-fast"
+REFINEMENT_THRESHOLD = 0.9
+REFINEMENT_COUNT = 3
+
 # Filter out Pydantic serialization warnings that occur due to LLM response format mismatches
 warnings.filterwarnings(
     "ignore",
     category=UserWarning,
-    message=".*Pydantic serializer warnings.*PydanticSerializationUnexpectedValue.*"
+    message=".*Pydantic serializer warnings.*PydanticSerializationUnexpectedValue.*",
 )
 
 
+# --- Data Models and DSPy Signatures ---
 class TestCase(BaseModel):
     """A single, executable test case for a function."""
 
@@ -102,6 +111,7 @@ class EvaluationSignature(dspy.Signature):
     )
 
 
+# --- Helper Functions for Code Analysis ---
 def _extract_python_code(text: str) -> str:
     """Extracts Python code from a markdown block."""
     match = re.search(r"```python\n(.*?)\n```", text, re.DOTALL)
@@ -120,26 +130,58 @@ def check_syntax(code: str) -> Tuple[bool, Optional[str], Optional[str]]:
         return False, None, f"Syntax Error: {e}"
 
 
+def _get_ast_based_scores(
+    tree: ast.AST, func_name: Optional[str]
+) -> Tuple[float, float]:
+    """
+    Calculates docstring and typing scores from a parsed AST.
+
+    Args:
+        tree: The parsed Abstract Syntax Tree of the code.
+        func_name: The optional name of a specific function to analyze.
+
+    Returns:
+        A tuple containing the docstring score and the typing score.
+    """
+    all_funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+    if not all_funcs:
+        return 0.0, 0.0
+
+    target_funcs = (
+        [f for f in all_funcs if f.name == func_name] if func_name else all_funcs
+    )
+    if not target_funcs:
+        return 0.0, 0.0
+
+    docstring_score = sum(1.0 for f in target_funcs if ast.get_docstring(f)) / len(
+        target_funcs
+    )
+
+    typed_elements = 0
+    typeable_elements = 0
+    for func_node in target_funcs:
+        args = func_node.args
+        num_typed_args = sum(1 for arg in args.args if arg.annotation is not None)
+        num_total_args = len(args.args)
+        has_return_annotation = 1 if func_node.returns is not None else 0
+
+        typed_elements += num_typed_args + has_return_annotation
+        typeable_elements += num_total_args + 1
+
+    typing_score = typed_elements / typeable_elements if typeable_elements > 0 else 0.0
+    return docstring_score, typing_score
+
+
 def check_code_quality(code: str, func_name: Optional[str] = None) -> CodeQualityScores:
     """
-    Analyzes a string of Python code for quality metrics.
-
-    This function assesses the code on several axes:
-    1.  Linting: Uses flake8 to check for PEP 8 compliance and other common issues.
-    2.  Complexity: Uses flake8's McCabe complexity check (C901).
-    3.  Typing: Checks for the presence of type hints on arguments and return values.
-    4.  Docstrings: Verifies the existence of a docstring for the specified function.
-
-    If `func_name` is provided, analysis is focused on that function. Otherwise,
-    it analyzes all functions found in the code.
+    Analyzes a string of Python code for quality metrics using flake8 and AST parsing.
 
     Args:
         code: A string containing the Python code to analyze.
         func_name: The optional name of a specific function to analyze.
 
     Returns:
-        A CodeQualityScores object containing the calculated scores and a list
-        of linting issues.
+        A CodeQualityScores object with calculated metrics.
     """
     tmp_path = None
     try:
@@ -163,54 +205,11 @@ def check_code_quality(code: str, func_name: Optional[str] = None) -> CodeQualit
         complexity_score = 1.0 if not complexity_warnings else 0.0
         linting_score = max(0.0, 1.0 - (0.1 * len(linting_issues)))
 
-        docstring_score, typing_score = 0.0, 0.0
         try:
             tree = ast.parse(code)
-            all_funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
-
-            if not all_funcs:
-                return CodeQualityScores(
-                    linting_score=linting_score,
-                    complexity_score=complexity_score,
-                    typing_score=0.0,
-                    docstring_score=0.0,
-                    linting_issues=linting_issues,
-                )
-
-            target_funcs = (
-                [f for f in all_funcs if f.name == func_name] if func_name else all_funcs
-            )
-
-            if not target_funcs:
-                return CodeQualityScores(
-                    linting_score=linting_score,
-                    complexity_score=complexity_score,
-                    typing_score=0.0,
-                    docstring_score=0.0,
-                    linting_issues=linting_issues,
-                )
-
-            docstring_score = sum(
-                1.0 for f in target_funcs if ast.get_docstring(f)
-            ) / len(target_funcs)
-
-            typed_elements = 0
-            typeable_elements = 0
-            for func_node in target_funcs:
-                args = func_node.args
-                num_typed_args = sum(1 for arg in args.args if arg.annotation is not None)
-                num_total_args = len(args.args)
-                has_return_annotation = 1 if func_node.returns is not None else 0
-
-                typed_elements += num_typed_args + has_return_annotation
-                typeable_elements += num_total_args + 1
-
-            typing_score = (
-                typed_elements / typeable_elements if typeable_elements > 0 else 0.0
-            )
-
+            docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
         except SyntaxError:
-            pass
+            docstring_score, typing_score = 0.0, 0.0
 
         return CodeQualityScores(
             linting_score=linting_score,
@@ -225,7 +224,25 @@ def check_code_quality(code: str, func_name: Optional[str] = None) -> CodeQualit
             os.unlink(tmp_path)
 
 
-def check_functional_correctness(code: str, func_name: str, test_cases: List[TestCase]) -> int:
+def _build_execution_command(func_name: str, test_case: TestCase) -> str:
+    """
+    Constructs a Python command to execute a function with given test case arguments.
+
+    Args:
+        func_name: The name of the function to execute.
+        test_case: The TestCase object containing args and kwargs.
+
+    Returns:
+        A string of Python code that can be executed to run the test.
+    """
+    args_json = json.dumps(test_case.args)
+    kwargs_json = json.dumps(test_case.kwargs)
+    return f"""import json; print(json.dumps({func_name}(*json.loads('''{args_json}'''), **json.loads('''{kwargs_json}'''))))"""
+
+
+def check_functional_correctness(
+    code: str, func_name: str, test_cases: List[TestCase]
+) -> int:
     """Executes test cases against the refactored code in a sandboxed environment."""
     if not test_cases:
         return 0
@@ -235,29 +252,24 @@ def check_functional_correctness(code: str, func_name: str, test_cases: List[Tes
             interp.execute(code)
             for test in test_cases:
                 try:
-                    # Use triple quotes for safer JSON embedding and normalize expected output
-                    args_json = json.dumps(test.args)
-                    kwargs_json = json.dumps(test.kwargs)
-                    exec_cmd = f"""import json; print(json.dumps({func_name}(*json.loads('''{args_json}'''), **json.loads('''{kwargs_json}'''))))"""
-
+                    exec_cmd = _build_execution_command(func_name, test)
                     actual_output_json = interp.execute(exec_cmd)
                     actual_output = json.loads(actual_output_json)
 
-                    # Normalize expected output by serializing and deserializing
-                    # to handle type differences (e.g., tuple vs. list).
-                    normalized_expected_output = json.loads(json.dumps(test.expected_output))
+                    normalized_expected_output = json.loads(
+                        json.dumps(test.expected_output)
+                    )
 
                     if actual_output == normalized_expected_output:
                         passed_count += 1
                 except Exception:
-                    # Silently continue if a single test case fails to execute.
                     continue
     except Exception:
-        # If the interpreter fails to initialize or execute the main code, return 0.
         return 0
     return passed_count
 
 
+# --- DSPy Modules ---
 class CodeRefactor(dspy.Module):
     """A module that analyzes, plans, and refactors Python code."""
 
@@ -303,13 +315,12 @@ class RefactoringEvaluator(dspy.Module):
         if not is_valid:
             return 0.0
 
-        # Handle module vs function refactoring
         if not tests:  # Module refactoring
-            quality = check_code_quality(code)  # No func_name, analyze whole module
-            functional_score = 1.0  # Assume functional if syntax is ok, since no tests
+            quality = check_code_quality(code)
+            functional_score = 1.0
         else:  # Function refactoring
             if not func_name:
-                return 0.0  # Cannot test if no function found in snippet
+                return 0.0
             quality = check_code_quality(code, func_name)
             passed_tests = check_functional_correctness(code, func_name, tests)
             functional_score = (passed_tests / len(tests)) if tests else 1.0
@@ -325,6 +336,7 @@ class RefactoringEvaluator(dspy.Module):
             return 0.0
 
 
+# --- Training Data ---
 def get_training_data() -> List[dspy.Example]:
     """Returns a list of examples for training the refactoring tool."""
     return [
@@ -352,7 +364,7 @@ def process_data(d):
             ],
         ).with_inputs("code_snippet"),
         dspy.Example(
-            code_snippet="""
+            code_snippet=textwrap.dedent("""
             def proc_trans(t, d1, d2, disc_rules):
                 r = {}
                 for i in range(len(t)):
@@ -414,7 +426,7 @@ def process_data(d):
                     output.append(entry)
 
                 return output
-        """,
+            """),
             test_cases=[
                 TestCase(
                     args=[
@@ -439,10 +451,11 @@ def process_data(d):
                     expected_output=[["user1", 100, 100.0, 100, 0, 100.0, "100"]],
                 ).model_dump(),
                 TestCase(
-                    args=[[], "2024-01-01", "2024-01-31", [("total", 100, 0.1)]], expected_output=[]
+                    args=[[], "2024-01-01", "2024-01-31", [("total", 100, 0.1)]],
+                    expected_output=[],
                 ).model_dump(),
             ],
-        ).with_inputs("code_snippet")
+        ).with_inputs("code_snippet"),
     ]
 
 
@@ -478,10 +491,6 @@ def evaluate_refactoring(
     """
     Performs a full evaluation of the refactored code without any I/O.
 
-    This function checks syntax, code quality, and functional correctness, returning
-    a structured result. It handles both single-function and whole-module
-    refactoring evaluation based on the presence of test cases in the example.
-
     Args:
         prediction: The dspy.Prediction object containing the refactored code.
         example: The dspy.Example object containing test cases.
@@ -505,13 +514,10 @@ def evaluate_refactoring(
     tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
 
     if not tests:
-        # Module-level evaluation (no test cases)
-        quality = check_code_quality(code)  # Analyze all functions
+        quality = check_code_quality(code)
         functional_result = FunctionalCheckResult(passed_tests=0, total_tests=0)
     else:
-        # Function-level evaluation
         if not func_name:
-            # Tests provided, but no function found in the code snippet.
             err_msg = "Tests provided, but no function found in code snippet."
             return EvaluationResult(
                 code=code,
@@ -579,7 +585,6 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
         )
         return
 
-    # This check is needed for type checkers to understand the implications of the check above.
     if not result.quality_scores or not result.functional_check:
         console.print(
             "[bold red]Error:[/bold red] Missing quality or functional results despite valid syntax."
@@ -612,28 +617,33 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
         )
 
 
-def main(
-    self_refactor: bool = typer.Option(
-        False,
-        "--self-refactor",
-        help="Enable self-refactoring mode to refactor this script.",
-    ),
-    write: bool = typer.Option(
-        False, "--write", help="Write the refactored code back to the file in self-refactor mode."
-    ),
-    optimize: bool = typer.Option(
-        False, "--optimize", help="Run the DSPy optimizer to generate a new `optimized.json`."
-    ),
-):
-    """A DSPy-powered tool to analyze, plan, and refactor Python code."""
-    warnings.filterwarnings("ignore")
-    console = Console()
+def _load_or_compile_model(
+    optimizer_path: Path,
+    optimize: bool,
+    console: Console,
+    prompt_llm: dspy.LM,
+    task_llm: dspy.LM,
+) -> dspy.Module:
+    """
+    Loads an optimized DSPy model or compiles a new one if needed.
 
-    task_llm = dspy.LM("gemini/gemini-2.5-pro", max_tokens=64000)
-    prompt_llm = dspy.LM("xai/grok-3-mini-fast", max_tokens=32000)
-    dspy.configure(lm=task_llm)
+    Args:
+        optimizer_path: The file path for the optimized model JSON.
+        optimize: A boolean flag to force recompilation.
+        console: The rich console object for printing status messages.
+        prompt_llm: The dspy.LM instance for prompt generation during optimization.
+        task_llm: The dspy.LM instance for task execution.
 
-    optimizer_path = Path("optimized.json")
+    Returns:
+        The loaded or compiled self-correcting DSPy module.
+    """
+    refactorer = CodeRefactor()
+    self_correcting_refactorer = dspy.Refine(
+        module=refactorer,
+        reward_fn=RefactoringEvaluator(),
+        threshold=REFINEMENT_THRESHOLD,
+        N=REFINEMENT_COUNT,
+    )
 
     if optimize or not optimizer_path.exists():
         console.print(
@@ -646,25 +656,17 @@ def main(
             auto="heavy",
             num_threads=8,
         )
-        refactorer = teleprompter.compile(
-            CodeRefactor(), trainset=get_training_data(), requires_permission_to_run=False
-        )
-        self_correcting_refactorer = dspy.Refine(
-            module=refactorer, reward_fn=RefactoringEvaluator(), threshold=0.9, N=3
+        teleprompter.compile(
+            refactorer, trainset=get_training_data(), requires_permission_to_run=False
         )
         console.print(f"Optimization complete. Saving to {optimizer_path}...")
         self_correcting_refactorer.save(str(optimizer_path))
     else:
         console.print(f"Loading optimized model from {optimizer_path}...")
-        refactorer = CodeRefactor()
-        self_correcting_refactorer = dspy.Refine(
-            module=refactorer, reward_fn=RefactoringEvaluator(), threshold=0.9, N=3
-        )
         self_correcting_refactorer.load(str(optimizer_path))
         console.print("[green]Optimized model loaded successfully![/green]")
 
-    if self_refactor:
-        run_self_refactor(console, self_correcting_refactorer, write)
+    return self_correcting_refactorer
 
 
 def run_self_refactor(console: Console, refactorer: dspy.Module, write: bool):
@@ -706,6 +708,45 @@ def run_self_refactor(console: Console, refactorer: dspy.Module, write: bool):
             console.print(
                 f"[bold red]Skipping write-back due to syntax errors:[/bold red]\n{err}"
             )
+
+
+# --- Main Application ---
+def main(
+    self_refactor: bool = typer.Option(
+        False,
+        "--self-refactor",
+        help="Enable self-refactoring mode to refactor this script.",
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Write the refactored code back to the file."
+    ),
+    optimize: bool = typer.Option(
+        False, "--optimize", help="Force re-optimization of the DSPy model."
+    ),
+    task_llm_model: str = typer.Option(
+        DEFAULT_TASK_LLM, "--task-llm", help="Model for the main refactoring task."
+    ),
+    prompt_llm_model: str = typer.Option(
+        DEFAULT_PROMPT_LLM,
+        "--prompt-llm",
+        help="Model for generating prompts during optimization.",
+    ),
+):
+    """A DSPy-powered tool to analyze, plan, and refactor Python code."""
+    warnings.filterwarnings("ignore")
+    console = Console()
+
+    task_llm = dspy.LM(task_llm_model, max_tokens=64000)
+    prompt_llm = dspy.LM(prompt_llm_model, max_tokens=32000)
+    dspy.configure(lm=task_llm)
+
+    refactorer = _load_or_compile_model(
+        OPTIMIZER_FILENAME, optimize, console, prompt_llm, task_llm
+    )
+
+    if self_refactor:
+        run_self_refactor(console, refactorer, write)
+
 
 if __name__ == "__main__":
     typer.run(main)
