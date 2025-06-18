@@ -29,7 +29,7 @@ RICH_SYNTAX_THEME: str = "monokai"
 
 # --- MLflow Configuration ---
 DEFAULT_MLFLOW_TRACKING_URI: str = "http://127.0.0.1:5000"
-DEFAULT_MLFLOW_EXPERIMENT_NAME: str = "resting-agent-refactor"
+DEFAULT_MLFLOW_EXPERIMENT_NAME: str = "robofactor"
 
 # --- Warning Filters ---
 # Filter Pydantic warnings from LLM response format mismatches

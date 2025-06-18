@@ -1,7 +1,7 @@
 [project]
-name = "resting-agent"
+name = "robofactor"
 version = "0.1.0"
-description = "Tools for building"
+description = "The robot who refactors: ^[^_^]^"
 readme = "README.md"
 authors = [{ name = "ethan-wickstrom", email = "e.t.wickstrom@wustl.edu" }]
 requires-python = ">=3.10"
@@ -27,13 +27,13 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ethan-wickstrom/resting-agent"
-Repository = "https://github.com/ethan-wickstrom/resting-agent.git"
-Issues = "https://github.com/ethan-wickstrom/resting-agent/issues"
-Documentation = "https://github.com/ethan-wickstrom/resting-agent#readme"
+Homepage = "https://github.com/ethan-wickstrom/robofactor"
+Repository = "https://github.com/ethan-wickstrom/robofactor.git"
+Issues = "https://github.com/ethan-wickstrom/robofactor/issues"
+Documentation = "https://github.com/ethan-wickstrom/robofactor#readme"
 
 [project.scripts]
-resting-agent = "refactor_tool:main"
+robofactor = "robofactor:main"
 
 [build-system]
 requires = ["hatchling"]
