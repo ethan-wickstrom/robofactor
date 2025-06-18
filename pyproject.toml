@@ -4,21 +4,24 @@ version = "0.1.0"
 description = "Autonomous agent for building RESTful APIs"
 readme = "README.md"
 authors = [{ name = "ethan-wickstrom", email = "e.t.wickstrom@wustl.edu" }]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Code Generators",
   "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "dspy-ai>=2.6.27",
-    "pydantic>=2.11.7",
-    "pyright>=1.1.402",
-    "typer>=0.16.0",
+  "pyright>=1.1.402",
+  "typer>=0.16.0",
+  "rich>=13.7.1",
+  "pyflakes>=3.3.2",
+  "flake8>=7.2.0",
+  "dspy-ai>=2.6.27",
 ]
 
 [project.urls]
@@ -28,7 +31,7 @@ Issues = "https://github.com/ethan-wickstrom/resting-agent/issues"
 Documentation = "https://github.com/ethan-wickstrom/resting-agent#readme"
 
 [project.scripts]
-resting-agent = "resting_agent.cli:main"
+resting-agent = "resting_agent.core.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -38,11 +41,7 @@ build-backend = "hatchling.build"
 packages = ["src/resting_agent"]
 
 [dependency-groups]
-dev = [
-    "isort>=6.0.1",
-    "mypy>=1.16.1",
-    "ruff>=0.11.13",
-]
+dev = ["isort>=6.0.1", "mypy>=1.16.1", "ruff>=0.11.13"]
 
 [tool.ruff]
 line-length = 100
@@ -67,7 +66,7 @@ ignore = [
 "tests/*" = ["S101"] # allow assert in tests
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
