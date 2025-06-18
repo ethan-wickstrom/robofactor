@@ -11,8 +11,8 @@ from pathlib import Path
 OPTIMIZER_FILENAME: Path = Path("optimized.json")
 
 # --- DSPy Model Configuration ---
-DEFAULT_TASK_LLM: str = "gemini/gemini-1.5-pro"
-DEFAULT_PROMPT_LLM: str = "xai/grok-3-mini-fast"
+DEFAULT_TASK_LLM: str = "gemini/gemini-2.5-flash-lite-preview-06-17"
+DEFAULT_PROMPT_LLM: str = "gemini/gemini-2.5-pro"
 TASK_LLM_MAX_TOKENS: int = 64000
 PROMPT_LLM_MAX_TOKENS: int = 32000
 
