@@ -13,9 +13,6 @@ help:
 	@echo "  format        Format code with black and isort"
 	@echo "  type-check    Run mypy type checking"
 	@echo "  check         Run all checks (lint, type-check, test)"
-	@echo "  build         Build distribution packages"
-	@echo "  docs          Build documentation"
-	@echo "  serve-docs    Serve documentation locally"
 
 # Installation targets
 install:
@@ -23,19 +20,6 @@ install:
 
 install-dev:
 	uv sync --all-groups
-
-# Cleaning
-clean:
-	rm -rf build/
-	rm -rf dist/
-	rm -rf *.egg-info
-	rm -rf .coverage
-	rm -rf htmlcov/
-	rm -rf .pytest_cache/
-	rm -rf .mypy_cache/
-	rm -rf .ruff_cache/
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
 
 # Testing
 test:
@@ -64,24 +48,3 @@ type-check:
 
 # Combined checks
 check: lint type-check test
-
-# Building
-build: clean
-	uv build
-
-# Documentation
-docs:
-	uv run --group docs mkdocs build
-
-serve-docs:
-	uv run --group docs mkdocs serve
-
-# Development helpers
-dev-shell:
-	uv run python
-
-example-simple:
-	uv run python examples/simple_api.py
-
-example-blog:
-	uv run python examples/blog_api.py

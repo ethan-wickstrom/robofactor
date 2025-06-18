@@ -1,19 +1,19 @@
-# ==============================================================================
-# File: refactor_tool/evaluation.py
-# ==============================================================================
 """
 Data models and core logic for evaluating refactored code.
 
 This module defines the structures for test cases, quality scores, and
 evaluation results, and contains the pure function for performing the evaluation.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, NamedTuple, Optional
+from pathlib import Path
+from typing import Any, NamedTuple
 
 import dspy
 from pydantic import BaseModel, Field
-from pathlib import Path
+
+from . import analysis_utils
 
 # --- Constants and Configuration ---
 OPTIMIZER_FILENAME = Path("optimized.json")
@@ -22,49 +22,50 @@ DEFAULT_PROMPT_LLM = "xai/grok-3-mini-fast"
 REFINEMENT_THRESHOLD = 0.9
 REFINEMENT_COUNT = 3
 
-from . import analysis_utils
-
 
 class TestCase(BaseModel):
     """A single, executable test case for a function."""
-    args: List[Any] = Field(default_factory=list)
-    kwargs: Dict[str, Any] = Field(default_factory=dict)
+
+    args: list[Any] = Field(default_factory=list)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
     expected_output: Any
 
 
 class CodeQualityScores(BaseModel):
     """Holds various code quality metrics."""
+
     linting_score: float
     complexity_score: float
     typing_score: float
     docstring_score: float
-    linting_issues: List[str] = Field(default_factory=list)
+    linting_issues: list[str] = Field(default_factory=list)
 
 
 class SyntaxCheckResult(NamedTuple):
     """Encapsulates the result of a syntax check."""
+
     is_valid: bool
-    func_name: Optional[str]
-    error_message: Optional[str]
+    func_name: str | None
+    error_message: str | None
 
 
 class FunctionalCheckResult(NamedTuple):
     """Encapsulates the result of functional correctness tests."""
+
     passed_tests: int
     total_tests: int
 
 
 class EvaluationResult(NamedTuple):
     """Holds all evaluation results for a piece of refactored code."""
+
     code: str
     syntax_check: SyntaxCheckResult
-    quality_scores: Optional[CodeQualityScores]
-    functional_check: Optional[FunctionalCheckResult]
+    quality_scores: CodeQualityScores | None
+    functional_check: FunctionalCheckResult | None
 
 
-def evaluate_refactoring(
-    prediction: dspy.Prediction, example: dspy.Example
-) -> EvaluationResult:
+def evaluate_refactoring(prediction: dspy.Prediction, example: dspy.Example) -> EvaluationResult:
     """
     Performs a full evaluation of the refactored code without any I/O.
 

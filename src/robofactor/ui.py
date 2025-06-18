@@ -4,6 +4,7 @@ Presentation logic for displaying results in the console.
 This module uses the 'rich' library to create user-friendly, formatted
 output for the analysis, plan, and evaluation phases.
 """
+
 import dspy
 from rich.console import Console
 from rich.panel import Panel
@@ -73,7 +74,9 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
     table.add_column(style="bold magenta")
 
     if func_check.total_tests > 0:
-        table.add_row("Functional Equivalence:", f"{func_check.passed_tests} / {func_check.total_tests}")
+        table.add_row(
+            "Functional Equivalence:", f"{func_check.passed_tests} / {func_check.total_tests}"
+        )
     else:
         table.add_row("Functional Equivalence:", "N/A (no tests)")
 
@@ -84,4 +87,6 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
 
     if quality.linting_issues:
         lint_issues_text = Text("\n- ".join(quality.linting_issues))
-        console.print(Panel(lint_issues_text, title="[yellow]Linting Issues[/yellow]", border_style="yellow"))
+        console.print(
+            Panel(lint_issues_text, title="[yellow]Linting Issues[/yellow]", border_style="yellow")
+        )

@@ -4,6 +4,7 @@ Centralized configuration for the refactoring tool.
 This module consolidates all constants, magic numbers, and default settings
 to simplify management and modification.
 """
+
 from pathlib import Path
 
 # --- File Paths ---
@@ -33,4 +34,6 @@ DEFAULT_MLFLOW_EXPERIMENT_NAME: str = "robofactor"
 
 # --- Warning Filters ---
 # Filter Pydantic warnings from LLM response format mismatches
-PYDANTIC_LLM_WARNING_FILTER: str = ".*Pydantic serializer warnings.*PydanticSerializationUnexpectedValue.*"
+PYDANTIC_LLM_WARNING_FILTER: str = (
+    ".*Pydantic serializer warnings.*PydanticSerializationUnexpectedValue.*"
+)

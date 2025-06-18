@@ -1,8 +1,8 @@
 import ast
 import enum
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Type
 
 # Type alias for function definition AST nodes to improve readability.
 FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
@@ -10,6 +10,7 @@ FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
 
 class ParameterKind(enum.Enum):
     """Enumeration for the different kinds of function parameters."""
+
     POSITIONAL_ONLY = "positional_only"
     POSITIONAL_OR_KEYWORD = "positional_or_keyword"
     VAR_POSITIONAL = "var_positional"
@@ -28,6 +29,7 @@ class Parameter:
         annotation: The type annotation as a string, if present.
         default: The default value as a string, if present.
     """
+
     name: str
     kind: ParameterKind
     annotation: str | None = None
@@ -43,6 +45,7 @@ class Decorator:
         name: The name of the decorator.
         args: A tuple of arguments passed to the decorator, as strings.
     """
+
     name: str
     args: tuple[str, ...] = ()
 
@@ -50,6 +53,7 @@ class Decorator:
 @dataclass(frozen=True)
 class FunctionContext:
     """Represents the context where a function is defined (base class)."""
+
     pass
 
 
@@ -61,6 +65,7 @@ class ModuleContext(FunctionContext):
     Attributes:
         module_name: The name of the module.
     """
+
     module_name: str
 
 
@@ -73,6 +78,7 @@ class ClassContext(FunctionContext):
         class_name: The name of the class.
         parent_context: The context in which the class is defined.
     """
+
     class_name: str
     parent_context: FunctionContext
 
@@ -86,6 +92,7 @@ class NestedContext(FunctionContext):
         parent_function: The name of the enclosing function.
         parent_context: The context of the enclosing function.
     """
+
     parent_function: str
     parent_context: FunctionContext
 
@@ -108,6 +115,7 @@ class FunctionInfo:
         docstring: The function's docstring, if present.
         return_annotation: The return type annotation as a string, if present.
     """
+
     name: str
     line_start: int
     line_end: int
@@ -122,7 +130,7 @@ class FunctionInfo:
 
     @classmethod
     def from_ast_node(
-        cls: Type["FunctionInfo"],
+        cls: type["FunctionInfo"],
         node: FunctionDefNode,
         context: FunctionContext,
     ) -> "FunctionInfo":
@@ -181,6 +189,7 @@ def extract_decorators(decorators: list[ast.expr]) -> tuple[Decorator, ...]:
     Returns:
         A tuple of Decorator objects.
     """
+
     def parse_decorator(dec: ast.expr) -> Decorator:
         match dec:
             case ast.Name(id=name):
@@ -216,13 +225,13 @@ def _map_parameter_defaults(args: ast.arguments) -> dict[str, str]:
     num_defaults = len(args.defaults)
     if num_defaults > 0:
         args_with_defaults = all_positional_args[-num_defaults:]
-        for arg, default_node in zip(args_with_defaults, args.defaults):
+        for arg, default_node in zip(args_with_defaults, args.defaults, strict=False):
             defaults_map[arg.arg] = ast_node_to_source(default_node)
 
     # Keyword-only defaults
     kw_defaults = {
         arg.arg: ast_node_to_source(default_node)
-        for arg, default_node in zip(args.kwonlyargs, args.kw_defaults)
+        for arg, default_node in zip(args.kwonlyargs, args.kw_defaults, strict=False)
         if default_node is not None
     }
     defaults_map.update(kw_defaults)
@@ -244,9 +253,8 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
     Yields:
         Parameter objects representing the function's signature.
     """
-    def _create_parameter(
-        arg: ast.arg, kind: ParameterKind, defaults: dict[str, str]
-    ) -> Parameter:
+
+    def _create_parameter(arg: ast.arg, kind: ParameterKind, defaults: dict[str, str]) -> Parameter:
         """Internal helper to create a Parameter instance."""
         return Parameter(
             name=arg.arg,
@@ -268,9 +276,7 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
         yield Parameter(
             name=args.vararg.arg,
             annotation=(
-                ast_node_to_source(args.vararg.annotation)
-                if args.vararg.annotation
-                else None
+                ast_node_to_source(args.vararg.annotation) if args.vararg.annotation else None
             ),
             kind=ParameterKind.VAR_POSITIONAL,
         )
@@ -282,9 +288,7 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
         yield Parameter(
             name=args.kwarg.arg,
             annotation=(
-                ast_node_to_source(args.kwarg.annotation)
-                if args.kwarg.annotation
-                else None
+                ast_node_to_source(args.kwarg.annotation) if args.kwarg.annotation else None
             ),
             kind=ParameterKind.VAR_KEYWORD,
         )
@@ -313,9 +317,7 @@ class _FunctionVisitor:
     object for each function it encounters.
     """
 
-    def visit(
-        self, node: ast.AST, context: FunctionContext
-    ) -> Iterator[FunctionInfo]:
+    def visit(self, node: ast.AST, context: FunctionContext) -> Iterator[FunctionInfo]:
         """
         Recursively visit AST nodes and yield function information.
 
@@ -357,9 +359,7 @@ class _FunctionVisitor:
             yield from self.visit(child, class_context)
 
 
-def _parse_ast_and_find_functions(
-    tree: ast.Module, module_name: str
-) -> Iterator[FunctionInfo]:
+def _parse_ast_and_find_functions(tree: ast.Module, module_name: str) -> Iterator[FunctionInfo]:
     """
     Internal helper to process a parsed AST and yield function info.
 
@@ -385,15 +385,13 @@ def parse_python_file(file_path: Path) -> Iterator[FunctionInfo]:
     Yields:
         FunctionInfo objects for all functions in the file.
     """
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         source_code = f.read()
     tree = ast.parse(source_code, filename=str(file_path))
     yield from _parse_ast_and_find_functions(tree, file_path.stem)
 
 
-def parse_python_source(
-    source_code: str, module_name: str = "<string>"
-) -> Iterator[FunctionInfo]:
+def parse_python_source(source_code: str, module_name: str = "<string>") -> Iterator[FunctionInfo]:
     """
     Parse a Python source string and stream all function definitions.
 
@@ -409,7 +407,7 @@ def parse_python_source(
 
 
 def filter_by_context(
-    context_type: Type[FunctionContext], functions: Iterator[FunctionInfo]
+    context_type: type[FunctionContext], functions: Iterator[FunctionInfo]
 ) -> Iterator[FunctionInfo]:
     """
     Filter functions by their context type (e.g., ClassContext).
@@ -437,9 +435,7 @@ def filter_by_decorator(
     Yields:
         The functions that have the specified decorator.
     """
-    yield from (
-        f for f in functions if any(d.name == decorator_name for d in f.decorators)
-    )
+    yield from (f for f in functions if any(d.name == decorator_name for d in f.decorators))
 
 
 def get_function_names(functions: Iterator[FunctionInfo]) -> Iterator[str]:
@@ -494,6 +490,7 @@ def format_function_signature(func: FunctionInfo) -> str:
     Returns:
         A string representing the function's signature.
     """
+
     def format_param(p: Parameter) -> str:
         """Formats a single parameter object into a string."""
         res = p.name

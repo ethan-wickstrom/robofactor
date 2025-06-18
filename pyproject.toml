@@ -92,7 +92,7 @@ addopts = [
   "-ra",
   "--strict-markers",
   "--strict-config",
-  "--cov=resting_agent",
+  "--cov=robofactor",
   "--cov-report=term-missing",
   "--cov-report=html",
   "--cov-report=xml",
