@@ -1,10 +1,11 @@
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Optional
 
-from dspy import Adapter, LM
+from dspy import LM, Adapter
 from dspy.utils.callback import BaseCallback
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-from .types import Temperature, PositiveInt
+
+from .types import PositiveInt, Temperature
 
 if TYPE_CHECKING:
     from dspy.clients.provider import Provider
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 
 class ImmutableModel(BaseModel):
     """Base class for immutable Pydantic models."""
+
     model_config = ConfigDict(
         frozen=True,
         arbitrary_types_allowed=True,
@@ -23,6 +25,7 @@ class ModelConfig(ImmutableModel):
     """
     Configuration for DSPy language models.
     """
+
     # Required
     model: str = Field(
         ...,
@@ -41,7 +44,7 @@ class ModelConfig(ImmutableModel):
     # Extensions
     callbacks: list[BaseCallback] = Field(default_factory=list)
     provider: Optional["Provider"] = None
-    finetuning_model: Optional[str] = None
+    finetuning_model: str | None = None
     launch_kwargs: dict[str, Any] = Field(default_factory=dict)
     train_kwargs: dict[str, Any] = Field(default_factory=dict)
 
@@ -50,6 +53,7 @@ class AppConfig(ImmutableModel):
     """
     Application configuration with lazy LM instantiation.
     """
+
     adapter: Adapter
     project_path: str
     model_cfg: ModelConfig

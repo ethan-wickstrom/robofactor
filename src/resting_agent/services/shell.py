@@ -23,9 +23,15 @@ class CommandExecutor:
                 check=False,
             )
             if result.returncode == 0:
-                return ExecutionResult(True, "Command executed successfully.", result.stdout.strip())
-            return ExecutionResult(False, f"Command failed with exit code {result.returncode}.", result.stderr.strip())
+                return ExecutionResult(
+                    True, "Command executed successfully.", result.stdout.strip()
+                )
+            return ExecutionResult(
+                False, f"Command failed with exit code {result.returncode}.", result.stderr.strip()
+            )
         except subprocess.TimeoutExpired:
             return ExecutionResult(False, f"Command timed out after {timeout} seconds.")
         except Exception as e:
-            return ExecutionResult(False, f"An unexpected error occurred during command execution: {e}")
+            return ExecutionResult(
+                False, f"An unexpected error occurred during command execution: {e}"
+            )

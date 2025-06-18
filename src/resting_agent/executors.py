@@ -10,6 +10,7 @@ from .services.shell import CommandExecutor
 
 class ActionExecutor:
     """Base class for executing a specific type of action."""
+
     def __init__(self, file_handler: FileSystemHandler, command_executor: CommandExecutor):
         self.file_handler = file_handler
         self.command_executor = command_executor
@@ -17,14 +18,23 @@ class ActionExecutor:
     def execute(self, action: Action, context: dict[str, Any]) -> ExecutionResult:
         raise NotImplementedError
 
+
 class CommandActionExecutor(ActionExecutor):
     """Executes shell command actions."""
+
     def execute(self, action: Action, context: dict[str, Any]) -> ExecutionResult:
         return self.command_executor.execute(action.path)
 
+
 class FileActionExecutor(ActionExecutor):
     """Executes file creation and update actions by generating code."""
-    def __init__(self, file_handler: FileSystemHandler, command_executor: CommandExecutor, code_generator: dspy.Module):
+
+    def __init__(
+        self,
+        file_handler: FileSystemHandler,
+        command_executor: CommandExecutor,
+        code_generator: dspy.Module,
+    ):
         super().__init__(file_handler, command_executor)
         self.code_generator = code_generator
 
@@ -42,11 +52,9 @@ class FileActionExecutor(ActionExecutor):
 
     def _resolve_dynamic_path(self, path: str) -> str:
         """Replaces placeholders in paths, like migration timestamps."""
-        if 'YYYY_MM_DD_HHMMSS' in path:
-            # A more robust implementation could check the last migration file to ensure order.
-            # For this refactor, we maintain the original behavior of generating a new timestamp.
-            timestamp = datetime.now().strftime('%Y_%m_%d_%H%M%S')
-            return path.replace('YYYY_MM_DD_HHMMSS', timestamp)
+        if "YYYY_MM_DD_HHMMSS" in path:
+            timestamp = datetime.now().strftime("%Y_%m_%d_%H%M%S")
+            return path.replace("YYYY_MM_DD_HHMMSS", timestamp)
         return path
 
     def execute(self, action: Action, context: dict[str, Any]) -> ExecutionResult:
@@ -56,16 +64,18 @@ class FileActionExecutor(ActionExecutor):
 
         try:
             prediction = self.code_generator(
-                intent=context['intent'],
+                intent=context["intent"],
                 file_path=resolved_path,
                 content_description=action.content_description,
-                context=context_content
+                context=context_content,
             )
             return self.file_handler.write_file(resolved_path, prediction.code_content)
         except Exception as e:
             return ExecutionResult(False, f"Code generation failed: {e}")
 
+
 class TestActionExecutor(ActionExecutor):
     """Executes the test suite."""
+
     def execute(self, action: Action, context: dict[str, Any]) -> ExecutionResult:
         return self.command_executor.execute("php artisan test")

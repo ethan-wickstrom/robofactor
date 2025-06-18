@@ -2,7 +2,6 @@ from typing import Any
 
 import dspy
 
-from .core.config import AppConfig
 from .core.constants import ActionType
 from .core.models import ExecutionResult, Plan
 from .executors import ActionExecutor, CommandActionExecutor, FileActionExecutor, TestActionExecutor
@@ -26,8 +25,12 @@ class ApiAgent(dspy.Module):
         command_executor = CommandExecutor(project_path)
         self._executors = {
             ActionType.RUN_COMMAND: CommandActionExecutor(file_handler, command_executor),
-            ActionType.CREATE_FILE: FileActionExecutor(file_handler, command_executor, self.code_generator),
-            ActionType.UPDATE_FILE: FileActionExecutor(file_handler, command_executor, self.code_generator),
+            ActionType.CREATE_FILE: FileActionExecutor(
+                file_handler, command_executor, self.code_generator
+            ),
+            ActionType.UPDATE_FILE: FileActionExecutor(
+                file_handler, command_executor, self.code_generator
+            ),
             ActionType.RUN_TESTS: TestActionExecutor(file_handler, command_executor),
         }
 
@@ -38,7 +41,9 @@ class ApiAgent(dspy.Module):
             prediction = self.planner(intent=intent)
             plan = prediction.plan
             if not plan.validate_dependencies():
-                return ExecutionResult(False, "Plan validation failed: an action depends on a future action.")
+                return ExecutionResult(
+                    False, "Plan validation failed: an action depends on a future action."
+                )
 
             self._print_plan(plan)
             return ExecutionResult(True, "Plan generated successfully.", plan)
@@ -49,13 +54,17 @@ class ApiAgent(dspy.Module):
         """Executes each action in the plan sequentially."""
         print("\n🚀 Executing plan...")
         logs = []
-        context = {'intent': intent}
+        context = {"intent": intent}
         for i, action in enumerate(plan.actions):
-            print(f"\n📋 Step {i+1}/{len(plan.actions)}: {action.action_type.value} -> {action.path or action.content_description}")
+            print(
+                f"\n📋 Step {i + 1}/{len(plan.actions)}: {action.action_type.value} -> {action.path or action.content_description}"
+            )
 
             executor = self._executors.get(action.action_type)
             if not executor:
-                result = ExecutionResult(False, f"Execution failed: Unknown action type '{action.action_type}'.")
+                result = ExecutionResult(
+                    False, f"Execution failed: Unknown action type '{action.action_type}'."
+                )
             else:
                 result = executor.execute(action, context)
 
@@ -66,13 +75,15 @@ class ApiAgent(dspy.Module):
                 if not result.success and result.data:
                     print(f"   Output: {result.data}")
 
-            logs.append({
-                'action': action.action_type.value,
-                'path': action.path,
-                'success': result.success,
-                'message': result.message,
-                'output': result.data
-            })
+            logs.append(
+                {
+                    "action": action.action_type.value,
+                    "path": action.path,
+                    "success": result.success,
+                    "message": result.message,
+                    "output": result.data,
+                }
+            )
         return logs
 
     def _run_final_tests(self, project_path: str) -> ExecutionResult:
@@ -88,27 +99,33 @@ class ApiAgent(dspy.Module):
         print("-" * 50)
         for i, action in enumerate(plan.actions):
             deps = f" (depends on: {action.dependencies})" if action.dependencies else ""
-            print(f"{i+1}. {action.action_type.value}: {action.path or action.content_description}{deps}")
+            print(
+                f"{i + 1}. {action.action_type.value}: {action.path or action.content_description}{deps}"
+            )
         print("-" * 50)
 
     def forward(self, intent: str, project_path: str) -> dspy.Prediction:
-            """Orchestrates the entire process of planning, executing, and verifying the API generation."""
-            self._initialize_executors(project_path)
+        """Orchestrates the entire process of planning, executing, and verifying the API generation."""
+        self._initialize_executors(project_path)
 
-            plan_result = self._generate_plan(intent)
-            if not plan_result.success:
-                return dspy.Prediction(success=False, error=plan_result.message, final_plan=[], execution_logs=[])
-
-            plan = plan_result.data
-            if not isinstance(plan, Plan):
-                return dspy.Prediction(success=False, error="Invalid plan data returned", final_plan=[], execution_logs=[])
-
-            execution_logs = self._execute_plan(plan, intent)
-            test_result = self._run_final_tests(project_path)
-
+        plan_result = self._generate_plan(intent)
+        if not plan_result.success:
             return dspy.Prediction(
-                success=test_result.success,
-                final_plan=[action.model_dump() for action in plan.actions],
-                execution_logs=execution_logs,
-                final_test_results=test_result.data or test_result.message
+                success=False, error=plan_result.message, final_plan=[], execution_logs=[]
             )
+
+        plan = plan_result.data
+        if not isinstance(plan, Plan):
+            return dspy.Prediction(
+                success=False, error="Invalid plan data returned", final_plan=[], execution_logs=[]
+            )
+
+        execution_logs = self._execute_plan(plan, intent)
+        test_result = self._run_final_tests(project_path)
+
+        return dspy.Prediction(
+            success=test_result.success,
+            final_plan=[action.model_dump() for action in plan.actions],
+            execution_logs=execution_logs,
+            final_test_results=test_result.data or test_result.message,
+        )

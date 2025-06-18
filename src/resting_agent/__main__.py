@@ -1,13 +1,14 @@
-import dspy
-from .core.config import AppConfig
+"""
+Main entry point for the Resting Agent CLI.
 
+This module serves as the entry point when running the package as a module:
+    python -m resting_agent
 
-def main():
-    """Main entry point for demonstrating the Laravel API Agent."""
-    # Configure DSPy with a capable model and ChatAdapter for structured output.
-    lm = dspy.LM('openai/gpt-4o-mini', max_tokens=4096)
-    dspy.configure(lm=lm, adapter=dspy.ChatAdapter)
+or after installation:
+    resting-agent
+"""
 
+from .core.cli import main
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

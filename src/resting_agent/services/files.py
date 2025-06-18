@@ -13,13 +13,15 @@ class FileSystemHandler:
         """Constructs and validates the absolute path for a file."""
         full_path = (self.base_path / relative_path).resolve()
         if not str(full_path).startswith(str(self.base_path)):
-            raise ValueError(f"Path '{relative_path}' attempts to access outside the project directory.")
+            raise ValueError(
+                f"Path '{relative_path}' attempts to access outside the project directory."
+            )
         return full_path
 
     def read_file(self, path: str) -> ExecutionResult:
         """Reads content from a file, handling potential errors."""
         try:
-            content = self._get_full_path(path).read_text(encoding='utf-8')
+            content = self._get_full_path(path).read_text(encoding="utf-8")
             return ExecutionResult(True, f"Successfully read content from {path}.", content)
         except FileNotFoundError:
             return ExecutionResult(False, f"File not found: {path}", "")
@@ -31,7 +33,7 @@ class FileSystemHandler:
         try:
             full_path = self._get_full_path(path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_text(content, encoding='utf-8')
+            full_path.write_text(content, encoding="utf-8")
             return ExecutionResult(True, f"Successfully wrote to {path}.")
         except Exception as e:
             return ExecutionResult(False, f"Error writing to file {path}: {e}")

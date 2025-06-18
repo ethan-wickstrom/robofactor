@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import dspy
+import mlflow
 import typer
 from pydantic import BaseModel, Field
 from rich.console import Console
@@ -669,18 +670,17 @@ def _load_or_compile_model(
     return self_correcting_refactorer
 
 
-def run_self_refactor(console: Console, refactorer: dspy.Module, write: bool):
-    """Handles the self-refactoring workflow."""
-    console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
-    script_path = Path(__file__).resolve()
+def run_refactor(console: Console, refactorer: dspy.Module, script_path: Path, write: bool):
+    console.print(Rule(f"[bold magenta]Beginning refactoring of {script_path.name}[/bold magenta]"))
+    script = script_path.resolve()
 
-    with open(script_path, "r", encoding="utf-8") as f:
+    with open(script, "r", encoding="utf-8") as f:
         source_code = f.read()
 
     console.print(
         Panel(
             Syntax(source_code, "python", theme="monokai", line_numbers=True),
-            title=f"[bold]Original Code: {script_path.name}[/bold]",
+            title=f"[bold]Original Code: {script.name}[/bold]",
             border_style="blue",
         )
     )
@@ -700,10 +700,10 @@ def run_self_refactor(console: Console, refactorer: dspy.Module, write: bool):
 
     if write:
         if is_valid:
-            console.print(f"[yellow]Writing refactored code back to {script_path}...[/yellow]")
+            console.print(f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]")
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(refactored_code)
-            console.print("[green]Self-refactoring complete.[/green]")
+            console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
         else:
             console.print(
                 f"[bold red]Skipping write-back due to syntax errors:[/bold red]\n{err}"
@@ -712,10 +712,19 @@ def run_self_refactor(console: Console, refactorer: dspy.Module, write: bool):
 
 # --- Main Application ---
 def main(
+    path: Optional[Path] = typer.Argument(
+        None,
+        help="Path to the Python file to refactor.",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        resolve_path=True,
+    ),
     self_refactor: bool = typer.Option(
         False,
-        "--self-refactor",
-        help="Enable self-refactoring mode to refactor this script.",
+        "--dog-food",
+        help="Self-refactor the script you are running."
     ),
     write: bool = typer.Option(
         False, "--write", help="Write the refactored code back to the file."
@@ -731,10 +740,23 @@ def main(
         "--prompt-llm",
         help="Model for generating prompts during optimization.",
     ),
+    tracing: bool = typer.Option(
+        True, "--tracing", help="Enable MLflow tracing for observability."
+    ),
+    mlflow_tracking_uri: str = typer.Option(
+        "http://127.0.0.1:5000", "--mlflow-uri", help="MLflow tracking server URI."
+    ),
 ):
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""
     warnings.filterwarnings("ignore")
     console = Console()
+
+    if tracing:
+        console.print(f"[bold yellow]MLflow tracing enabled. Tracking URI: {mlflow_tracking_uri}[/bold yellow]")
+        console.print("[bold yellow]To view traces, run: mlflow server --backend-store-uri sqlite:///mlflow.db[/bold yellow]")
+        mlflow.set_tracking_uri(mlflow_tracking_uri)
+        mlflow.set_experiment("resting-agent-refactor")
+        mlflow.dspy.autolog(log_compiles=True, log_traces=True)
 
     task_llm = dspy.LM(task_llm_model, max_tokens=64000)
     prompt_llm = dspy.LM(prompt_llm_model, max_tokens=32000)
@@ -745,7 +767,15 @@ def main(
     )
 
     if self_refactor:
-        run_self_refactor(console, refactorer, write)
+        console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
+        run_refactor(console, refactorer, Path(__file__), write)
+    elif path:
+        run_refactor(console, refactorer, path, write)
+    else:
+        console.print(
+            "[bold red]Error:[/bold red] Please provide a path to a file to refactor, or use the --self-refactor flag."
+        )
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
