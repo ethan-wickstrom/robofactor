@@ -1,7 +1,7 @@
 [project]
 name = "robofactor"
 version = "0.1.0"
-description = "The robot who refactors: ^[^_^]^"
+description = "The robot who refactors: /[^_^]\\"
 readme = "README.md"
 authors = [{ name = "ethan-wickstrom", email = "e.t.wickstrom@wustl.edu" }]
 requires-python = ">=3.10"
