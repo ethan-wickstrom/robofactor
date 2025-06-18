@@ -1,0 +1,127 @@
+"""
+Main entry point for the command-line interface (CLI) of the refactoring tool.
+"""
+import warnings
+from pathlib import Path
+from typing import Optional
+
+import dspy
+import mlflow
+import typer
+from rich.console import Console
+from rich.rule import Rule
+from rich.panel import Panel
+from rich.syntax import Syntax
+
+from . import config, ui
+from .analysis_utils import check_syntax, _extract_python_code
+from .dspy_modules import CodeRefactor, RefactoringEvaluator, get_training_data
+from .evaluation import evaluate_refactoring
+
+app = typer.Typer()
+
+
+def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
+    """Configures warnings, MLflow, and returns a rich Console."""
+    warnings.filterwarnings("ignore", category=UserWarning, message=config.PYDANTIC_LLM_WARNING_FILTER)
+    console = Console()
+    if tracing:
+        console.print(f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]")
+        mlflow.set_tracking_uri(mlflow_uri)
+        mlflow.set_experiment(mlflow_experiment)
+        mlflow.dspy.autolog(log_compiles=True, log_traces=True)
+    return console
+
+
+def _load_or_compile_model(
+    optimizer_path: Path, optimize: bool, console: Console, prompt_llm: dspy.LM, task_llm: dspy.LM
+) -> dspy.Module:
+    """Loads an optimized DSPy model or compiles a new one."""
+    refactorer = CodeRefactor()
+    self_correcting_refactorer = dspy.Refine(
+        module=refactorer,
+        reward_fn=RefactoringEvaluator(),
+        threshold=config.REFINEMENT_THRESHOLD,
+        N=config.REFINEMENT_COUNT,
+    )
+
+    if optimize or not optimizer_path.exists():
+        console.print("[yellow]No optimized model found or --optimize set. Running optimization...[/yellow]")
+        teleprompter = dspy.MIPROv2(
+            metric=RefactoringEvaluator(), prompt_model=prompt_llm, task_model=task_llm, auto="heavy", num_threads=8
+        )
+        teleprompter.compile(refactorer, trainset=get_training_data(), requires_permission_to_run=False)
+        console.print(f"Optimization complete. Saving to {optimizer_path}...")
+        self_correcting_refactorer.save(str(optimizer_path))
+    else:
+        console.print(f"Loading optimized model from {optimizer_path}...")
+        self_correcting_refactorer.load(str(optimizer_path))
+        console.print("[green]Optimized model loaded successfully![/green]")
+
+    return self_correcting_refactorer
+
+
+def _run_refactoring_on_file(console: Console, refactorer: dspy.Module, script_path: Path, write: bool):
+    """Reads a file, runs the refactoring process, and displays results."""
+    console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
+    source_code = script_path.read_text(encoding="utf-8")
+
+    console.print(Panel(Syntax(source_code, "python", theme=config.RICH_SYNTAX_THEME, line_numbers=True),
+                        title=f"[bold]Original Code: {script_path.name}[/bold]", border_style="blue"))
+
+    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs("code_snippet")
+    prediction = refactorer(**refactor_example.inputs())
+    ui.display_refactoring_process(console, prediction)
+
+    evaluation = evaluate_refactoring(prediction, refactor_example)
+    ui.display_evaluation_results(console, evaluation)
+
+    refactored_code = _extract_python_code(prediction.refactored_code)
+    is_valid, _, err = check_syntax(refactored_code)
+
+    if write:
+        if is_valid:
+            console.print(f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]")
+            script_path.write_text(refactored_code, encoding="utf-8")
+            console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
+        else:
+            console.print(f"[bold red]Skipping write-back due to syntax errors:[/bold red]\n{err}")
+
+
+@app.command()
+def main(
+    path: Optional[Path] = typer.Argument(None, help="Path to the Python file to refactor.", exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True),
+    self_refactor: bool = typer.Option(False, "--dog-food", help="Self-refactor the script you are running."),
+    write: bool = typer.Option(False, "--write", help="Write the refactored code back to the file."),
+    optimize: bool = typer.Option(False, "--optimize", help="Force re-optimization of the DSPy model."),
+    task_llm_model: str = typer.Option(config.DEFAULT_TASK_LLM, "--task-llm", help="Model for the main refactoring task."),
+    prompt_llm_model: str = typer.Option(config.DEFAULT_PROMPT_LLM, "--prompt-llm", help="Model for generating prompts during optimization."),
+    tracing: bool = typer.Option(True, "--tracing/--no-tracing", help="Enable MLflow tracing."),
+    mlflow_uri: str = typer.Option(config.DEFAULT_MLFLOW_TRACKING_URI, "--mlflow-uri", help="MLflow tracking server URI."),
+    mlflow_experiment: str = typer.Option(config.DEFAULT_MLFLOW_EXPERIMENT_NAME, "--mlflow-experiment", help="MLflow experiment name."),
+):
+    """A DSPy-powered tool to analyze, plan, and refactor Python code."""
+    console = _setup_environment(tracing, mlflow_uri, mlflow_experiment)
+
+    task_llm = dspy.LM(task_llm_model, max_tokens=config.TASK_LLM_MAX_TOKENS)
+    prompt_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS)
+    dspy.configure(lm=task_llm)
+
+    refactorer = _load_or_compile_model(config.OPTIMIZER_FILENAME, optimize, console, prompt_llm, task_llm)
+
+    target_path: Optional[Path] = None
+    if self_refactor:
+        target_path = Path(__file__)
+        console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
+    elif path:
+        target_path = path
+
+    if target_path:
+        _run_refactoring_on_file(console, refactorer, target_path, write)
+    else:
+        console.print("[bold red]Error:[/bold red] Please provide a path to a file or use --dog-food.")
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    app()

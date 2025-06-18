@@ -1,7 +1,7 @@
 [project]
 name = "resting-agent"
 version = "0.1.0"
-description = "Autonomous agent for building RESTful APIs"
+description = "Tools for building"
 readme = "README.md"
 authors = [{ name = "ethan-wickstrom", email = "e.t.wickstrom@wustl.edu" }]
 requires-python = ">=3.10"
@@ -33,14 +33,14 @@ Issues = "https://github.com/ethan-wickstrom/resting-agent/issues"
 Documentation = "https://github.com/ethan-wickstrom/resting-agent#readme"
 
 [project.scripts]
-resting-agent = "resting_agent.core.cli:main"
+resting-agent = "refactor_tool:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/resting_agent"]
+packages = ["src/refactor_tool"]
 
 [dependency-groups]
 dev = ["isort>=6.0.1", "mypy>=1.16.1", "ruff>=0.11.13"]
@@ -101,7 +101,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.coverage.run]
-source = ["src/resting_agent"]
+source = ["src/refactor_tool"]
 branch = true
 
 [tool.coverage.report]
