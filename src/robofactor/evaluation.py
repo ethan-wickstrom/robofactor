@@ -7,20 +7,12 @@ evaluation results, and contains the pure function for performing the evaluation
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, NamedTuple
 
 import dspy
 from pydantic import BaseModel, Field
 
 from . import analysis_utils
-
-# --- Constants and Configuration ---
-OPTIMIZER_FILENAME = Path("optimized.json")
-DEFAULT_TASK_LLM = "gemini/gemini-2.5-pro"
-DEFAULT_PROMPT_LLM = "xai/grok-3-mini-fast"
-REFINEMENT_THRESHOLD = 0.9
-REFINEMENT_COUNT = 3
 
 
 class TestCase(BaseModel):

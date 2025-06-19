@@ -1,0 +1,56 @@
+[
+  {
+    "code_snippet": "def process_data(d):\n    res = [x['price'] * x['qty'] for x in d if x['qty'] > 0]\n    total = 0\n    for r in res:\n        total += r\n    tax = 0.08\n    final_total = total * (1 + tax)\n    return final_total",
+    "test_cases": [
+      {
+        "args": [[{"price": 10, "qty": 2}, {"price": 5, "qty": -1}]],
+        "kwargs": {},
+        "expected_output": 21.6
+      },
+      {
+        "args": [[{"price": 100, "qty": 1}, {"price": 20, "qty": 5}]],
+        "kwargs": {},
+        "expected_output": 216.0
+      },
+      {
+        "args": [[]],
+        "kwargs": {},
+        "expected_output": 0.0
+      }
+    ]
+  },
+  {
+    "code_snippet": "from datetime import datetime\n\ndef proc_trans(t, d1, d2, disc_rules):\n    # Filter transactions by date range\n    start_date = datetime.strptime(d1, '%Y-%m-%d')\n    end_date = datetime.strptime(d2, '%Y-%m-%d')\n    filtered_t = []\n    for trans in t:\n        trans_date = datetime.strptime(trans[2], '%Y-%m-%d')\n        if start_date <= trans_date <= end_date:\n            filtered_t.append(trans)\n\n    # Group transactions by user\n    user_agg = {}\n    for user, amount, _ in filtered_t:\n        if user not in user_agg:\n            user_agg[user] = {'total': 0, 'count': 0, 'amounts': []}\n        user_agg[user]['total'] += amount\n        user_agg[user]['count'] += 1\n        user_agg[user]['amounts'].append(amount)\n\n    # Calculate final results for each user\n    result_list = []\n    for user, data in user_agg.items():\n        total = data['total']\n        count = data['count']\n        avg_amount = total / count if count > 0 else 0\n        max_amount = max(data['amounts']) if data['amounts'] else 0\n\n        # Apply discounts\n        max_disc = 0\n        for rule_type, threshold, discount in disc_rules:\n            if rule_type == 'total' and total > threshold:\n                max_disc = max(max_disc, discount)\n            elif rule_type == 'count' and count > threshold:\n                max_disc = max(max_disc, discount)\n            elif rule_type == 'max' and max_amount > threshold:\n                max_disc = max(max_disc, discount)\n        \n        final_price = total * (1 - max_disc)\n        amounts_str = ';'.join(map(str, sorted(data['amounts'])))\n\n        result_list.append([user, total, avg_amount, max_amount, max_disc, final_price, amounts_str])\n    \n    return result_list",
+    "test_cases": [
+      {
+        "args": [
+          [
+            ["user1", 100, "2024-01-01"],
+            ["user1", 200, "2024-01-02"],
+            ["user2", 150, "2024-01-01"],
+            ["user1", 50, "2024-01-03"],
+            ["user2", 300, "2024-01-04"]
+          ],
+          "2024-01-01",
+          "2024-01-03",
+          [["total", 250, 0.1], ["count", 2, 0.05], ["max", 150, 0.15]]
+        ],
+        "kwargs": {},
+        "expected_output": [
+            ["user1", 350, 116.66666666666667, 200, 0.3, 245.0, "50;100;200"],
+            ["user2", 150, 150.0, 150, 0.15, 127.5, "150"]
+        ]
+      },
+      {
+        "args": [[["user1", 100, "2024-01-01"]], "2024-01-01", "2024-01-01", []],
+        "kwargs": {},
+        "expected_output": [["user1", 100, 100.0, 100, 0, 100.0, "100"]]
+      },
+      {
+        "args": [[], "2024-01-01", "2024-01-31", [["total", 100, 0.1]]],
+        "kwargs": {},
+        "expected_output": []
+      }
+    ]
+  }
+]
