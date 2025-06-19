@@ -1,14 +1,11 @@
-# models.py
-"""
-Data models for representing Python function metadata and context.
-
-This module defines the core data structures used to store information about
-Python functions, parameters, decorators, and their defining contexts.
-"""
-
+import ast
 import enum
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from pathlib import Path
+
+# Type alias for function definition AST nodes to improve readability.
+FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
 
 
 class ParameterKind(enum.Enum):
@@ -35,8 +32,8 @@ class Parameter:
 
     name: str
     kind: ParameterKind
-    annotation: Optional[str] = None
-    default: Optional[str] = None
+    annotation: str | None = None
+    default: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,7 +47,7 @@ class Decorator:
     """
 
     name: str
-    args: Tuple[str, ...] = ()
+    args: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -124,17 +121,17 @@ class FunctionInfo:
     line_end: int
     column_start: int
     column_end: int
-    parameters: Tuple[Parameter, ...]
-    decorators: Tuple[Decorator, ...]
+    parameters: tuple[Parameter, ...]
+    decorators: tuple[Decorator, ...]
     is_async: bool
     context: FunctionContext
-    docstring: Optional[str] = None
-    return_annotation: Optional[str] = None
+    docstring: str | None = None
+    return_annotation: str | None = None
 
     @classmethod
     def from_ast_node(
         cls: type["FunctionInfo"],
-        node: "ast.FunctionDef | ast.AsyncFunctionDef",
+        node: FunctionDefNode,
         context: FunctionContext,
     ) -> "FunctionInfo":
         """
@@ -151,8 +148,6 @@ class FunctionInfo:
         Returns:
             A new instance of FunctionInfo.
         """
-        from .utils import extract_parameters, extract_decorators, extract_docstring, ast_node_to_source
-        
         return cls(
             name=node.name,
             line_start=node.lineno,
@@ -167,19 +162,150 @@ class FunctionInfo:
             return_annotation=ast_node_to_source(node.returns) if node.returns else None,
         )
 
-# parser.py
-"""
-AST parsing logic for extracting function metadata from Python source code.
 
-This module handles the traversal of AST nodes to identify and extract information
-about function definitions, including their context (module, class, or nested).
-"""
+def ast_node_to_source(node: ast.AST) -> str:
+    """
+    Convert an AST node back to its source code representation.
 
-import ast
-from pathlib import Path
-from typing import Iterator
+    Args:
+        node: The AST node to convert.
 
-from .models import FunctionContext, ModuleContext, ClassContext, NestedContext, FunctionInfo
+    Returns:
+        The source code string for the node, or a repr for fallback.
+    """
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return repr(node)
+
+
+def extract_decorators(decorators: list[ast.expr]) -> tuple[Decorator, ...]:
+    """
+    Extract decorator information from an AST decorator list.
+
+    Args:
+        decorators: A list of decorator nodes from an AST function definition.
+
+    Returns:
+        A tuple of Decorator objects.
+    """
+
+    def parse_decorator(dec: ast.expr) -> Decorator:
+        match dec:
+            case ast.Name(id=name):
+                return Decorator(name=name)
+            case ast.Call(func=func, args=args):
+                return Decorator(
+                    name=ast_node_to_source(func),
+                    args=tuple(ast_node_to_source(arg) for arg in args),
+                )
+            case _:
+                return Decorator(name=ast_node_to_source(dec))
+
+    return tuple(parse_decorator(dec) for dec in decorators)
+
+
+def _map_parameter_defaults(args: ast.arguments) -> dict[str, str]:
+    """
+    Maps parameter names to their default value's source string.
+
+    This helper centralizes the logic for extracting default values for both
+    positional and keyword-only arguments from an `ast.arguments` node.
+
+    Args:
+        args: The `ast.arguments` node from a function definition.
+
+    Returns:
+        A dictionary mapping parameter names to their unparsed default values.
+    """
+    defaults_map = {}
+
+    # Positional and positional-or-keyword defaults
+    all_positional_args = args.posonlyargs + args.args
+    num_defaults = len(args.defaults)
+    if num_defaults > 0:
+        args_with_defaults = all_positional_args[-num_defaults:]
+        for arg, default_node in zip(args_with_defaults, args.defaults, strict=False):
+            defaults_map[arg.arg] = ast_node_to_source(default_node)
+
+    # Keyword-only defaults
+    kw_defaults = {
+        arg.arg: ast_node_to_source(default_node)
+        for arg, default_node in zip(args.kwonlyargs, args.kw_defaults, strict=False)
+        if default_node is not None
+    }
+    defaults_map.update(kw_defaults)
+
+    return defaults_map
+
+
+def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
+    """
+    Generate parameter information from a function's AST node.
+
+    This function processes all parameter kinds in their correct order by
+    delegating the creation of Parameter objects to an internal helper,
+    which reduces code duplication.
+
+    Args:
+        func_node: The function definition node from the AST.
+
+    Yields:
+        Parameter objects representing the function's signature.
+    """
+
+    def _create_parameter(arg: ast.arg, kind: ParameterKind, defaults: dict[str, str]) -> Parameter:
+        """Internal helper to create a Parameter instance."""
+        return Parameter(
+            name=arg.arg,
+            annotation=ast_node_to_source(arg.annotation) if arg.annotation else None,
+            default=defaults.get(arg.arg),
+            kind=kind,
+        )
+
+    args = func_node.args
+    defaults = _map_parameter_defaults(args)
+
+    for arg in args.posonlyargs:
+        yield _create_parameter(arg, ParameterKind.POSITIONAL_ONLY, defaults)
+
+    for arg in args.args:
+        yield _create_parameter(arg, ParameterKind.POSITIONAL_OR_KEYWORD, defaults)
+
+    if args.vararg:
+        yield Parameter(
+            name=args.vararg.arg,
+            annotation=(
+                ast_node_to_source(args.vararg.annotation) if args.vararg.annotation else None
+            ),
+            kind=ParameterKind.VAR_POSITIONAL,
+        )
+
+    for arg in args.kwonlyargs:
+        yield _create_parameter(arg, ParameterKind.KEYWORD_ONLY, defaults)
+
+    if args.kwarg:
+        yield Parameter(
+            name=args.kwarg.arg,
+            annotation=(
+                ast_node_to_source(args.kwarg.annotation) if args.kwarg.annotation else None
+            ),
+            kind=ParameterKind.VAR_KEYWORD,
+        )
+
+
+def extract_docstring(func_node: FunctionDefNode) -> str | None:
+    """
+
+    Extract the docstring from a function node using ast.get_docstring.
+
+    Args:
+        func_node: The function definition node from the AST.
+
+    Returns:
+        The docstring string, or None if not found.
+    """
+    return ast.get_docstring(func_node, clean=False)
 
 
 class _FunctionVisitor:
@@ -215,7 +341,7 @@ class _FunctionVisitor:
                     yield from self.visit(child, context)
 
     def _visit_function_def(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef, context: FunctionContext
+        self, node: FunctionDefNode, context: FunctionContext
     ) -> Iterator[FunctionInfo]:
         """Handle FunctionDef and AsyncFunctionDef nodes."""
         yield FunctionInfo.from_ast_node(node, context)
@@ -279,183 +405,9 @@ def parse_python_source(source_code: str, module_name: str = "<string>") -> Iter
     tree = ast.parse(source_code, filename=module_name)
     yield from _parse_ast_and_find_functions(tree, module_name)
 
-# utils.py
-"""
-Utility functions for AST node processing and metadata extraction.
-
-This module provides helper functions to convert AST nodes to source code,
-extract decorators, parameters, and docstrings from function definitions.
-"""
-
-import ast
-from typing import Iterator, Dict, List, Tuple, Optional
-
-from .models import Parameter, ParameterKind, Decorator
-
-
-def ast_node_to_source(node: ast.AST) -> str:
-    """
-    Convert an AST node back to its source code representation.
-
-    Args:
-        node: The AST node to convert.
-
-    Returns:
-        The source code string for the node, or a repr for fallback.
-    """
-    try:
-        return ast.unparse(node)
-    except Exception:
-        return repr(node)
-
-
-def extract_decorators(decorators: List[ast.expr]) -> Tuple[Decorator, ...]:
-    """
-    Extract decorator information from an AST decorator list.
-
-    Args:
-        decorators: A list of decorator nodes from an AST function definition.
-
-    Returns:
-        A tuple of Decorator objects.
-    """
-
-    def parse_decorator(dec: ast.expr) -> Decorator:
-        match dec:
-            case ast.Name(id=name):
-                return Decorator(name=name)
-            case ast.Call(func=func, args=args):
-                return Decorator(
-                    name=ast_node_to_source(func),
-                    args=tuple(ast_node_to_source(arg) for arg in args),
-                )
-            case _:
-                return Decorator(name=ast_node_to_source(dec))
-
-    return tuple(parse_decorator(dec) for dec in decorators)
-
-
-def _map_parameter_defaults(args: ast.arguments) -> Dict[str, str]:
-    """
-    Maps parameter names to their default value's source string.
-
-    This helper centralizes the logic for extracting default values for both
-    positional and keyword-only arguments from an `ast.arguments` node.
-
-    Args:
-        args: The `ast.arguments` node from a function definition.
-
-    Returns:
-        A dictionary mapping parameter names to their unparsed default values.
-    """
-    defaults_map = {}
-
-    # Positional and positional-or-keyword defaults
-    all_positional_args = args.posonlyargs + args.args
-    num_defaults = len(args.defaults)
-    if num_defaults > 0:
-        args_with_defaults = all_positional_args[-num_defaults:]
-        for arg, default_node in zip(args_with_defaults, args.defaults, strict=False):
-            defaults_map[arg.arg] = ast_node_to_source(default_node)
-
-    # Keyword-only defaults
-    kw_defaults = {
-        arg.arg: ast_node_to_source(default_node)
-        for arg, default_node in zip(args.kwonlyargs, args.kw_defaults, strict=False)
-        if default_node is not None
-    }
-    defaults_map.update(kw_defaults)
-
-    return defaults_map
-
-
-def extract_parameters(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[Parameter]:
-    """
-    Generate parameter information from a function's AST node.
-
-    This function processes all parameter kinds in their correct order by
-    delegating the creation of Parameter objects to an internal helper,
-    which reduces code duplication.
-
-    Args:
-        func_node: The function definition node from the AST.
-
-    Yields:
-        Parameter objects representing the function's signature.
-    """
-
-    def create_parameter(arg: ast.arg, kind: ParameterKind, defaults: Dict[str, str]) -> Parameter:
-        """Internal helper to create a Parameter instance with consistent logic."""
-        return Parameter(
-            name=arg.arg,
-            annotation=ast_node_to_source(arg.annotation) if arg.annotation else None,
-            default=defaults.get(arg.arg),
-            kind=kind,
-        )
-
-    args = func_node.args
-    param_defaults = _map_parameter_defaults(args)
-
-    # Process positional-only parameters
-    for arg in args.posonlyargs:
-        yield create_parameter(arg, ParameterKind.POSITIONAL_ONLY, param_defaults)
-
-    # Process positional or keyword parameters
-    for arg in args.args:
-        yield create_parameter(arg, ParameterKind.POSITIONAL_OR_KEYWORD, param_defaults)
-
-    # Process variable positional parameter (*args)
-    if args.vararg:
-        yield Parameter(
-            name=args.vararg.arg,
-            annotation=(
-                ast_node_to_source(args.vararg.annotation) if args.vararg.annotation else None
-            ),
-            kind=ParameterKind.VAR_POSITIONAL,
-        )
-
-    # Process keyword-only parameters
-    for arg in args.kwonlyargs:
-        yield create_parameter(arg, ParameterKind.KEYWORD_ONLY, param_defaults)
-
-    # Process variable keyword parameter (**kwargs)
-    if args.kwarg:
-        yield Parameter(
-            name=args.kwarg.arg,
-            annotation=(
-                ast_node_to_source(args.kwarg.annotation) if args.kwarg.annotation else None
-            ),
-            kind=ParameterKind.VAR_KEYWORD,
-        )
-
-
-def extract_docstring(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> Optional[str]:
-    """
-    Extract the docstring from a function node using ast.get_docstring.
-
-    Args:
-        func_node: The function definition node from the AST.
-
-    Returns:
-        The docstring string, or None if not found.
-    """
-    return ast.get_docstring(func_node, clean=False)
-
-# filters.py
-"""
-Filtering and formatting utilities for processing FunctionInfo objects.
-
-This module provides functions to filter functions based on context, decorators,
-or async status, as well as formatting function signatures for display.
-"""
-
-from typing import Iterator, Type
-
-from .models import FunctionContext, ClassContext, FunctionInfo
-
 
 def filter_by_context(
-    context_type: Type[FunctionContext], functions: Iterator[FunctionInfo]
+    context_type: type[FunctionContext], functions: Iterator[FunctionInfo]
 ) -> Iterator[FunctionInfo]:
     """
     Filter functions by their context type (e.g., ClassContext).
@@ -539,7 +491,7 @@ def format_function_signature(func: FunctionInfo) -> str:
         A string representing the function's signature.
     """
 
-    def format_param(p: "Parameter") -> str:
+    def format_param(p: Parameter) -> str:
         """Formats a single parameter object into a string."""
         res = p.name
         if p.annotation:
@@ -554,26 +506,26 @@ def format_function_signature(func: FunctionInfo) -> str:
 
     for p in func.parameters:
         match p.kind:
-            case "ParameterKind.POSITIONAL_ONLY":
+            case ParameterKind.POSITIONAL_ONLY:
                 param_parts.append(format_param(p))
-            case "ParameterKind.POSITIONAL_OR_KEYWORD":
+            case ParameterKind.POSITIONAL_OR_KEYWORD:
                 if not pos_only_ended and any(
-                    param.kind == "ParameterKind.POSITIONAL_ONLY" for param in func.parameters
+                    param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
                 ):
                     param_parts.append("/")
                     pos_only_ended = True
                 param_parts.append(format_param(p))
-            case "ParameterKind.VAR_POSITIONAL":
+            case ParameterKind.VAR_POSITIONAL:
                 if not pos_only_ended and any(
-                    param.kind == "ParameterKind.POSITIONAL_ONLY" for param in func.parameters
+                    param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
                 ):
                     param_parts.append("/")
                     pos_only_ended = True
                 param_parts.append(f"*{p.name}")
                 var_pos_added = True
-            case "ParameterKind.KEYWORD_ONLY":
+            case ParameterKind.KEYWORD_ONLY:
                 if not pos_only_ended and any(
-                    param.kind == "ParameterKind.POSITIONAL_ONLY" for param in func.parameters
+                    param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
                 ):
                     param_parts.append("/")
                     pos_only_ended = True
@@ -581,13 +533,13 @@ def format_function_signature(func: FunctionInfo) -> str:
                     param_parts.append("*")
                     var_pos_added = True
                 param_parts.append(format_param(p))
-            case "ParameterKind.VAR_KEYWORD":
+            case ParameterKind.VAR_KEYWORD:
                 if not var_pos_added:
                     param_parts.append("*")
                 param_parts.append(f"**{p.name}")
 
     if not pos_only_ended and any(
-        param.kind == "ParameterKind.POSITIONAL_ONLY" for param in func.parameters
+        param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
     ):
         param_parts.append("/")
 
@@ -595,41 +547,3 @@ def format_function_signature(func: FunctionInfo) -> str:
     async_prefix = "async " if func.is_async else ""
     return_suffix = f" -> {func.return_annotation}" if func.return_annotation else ""
     return f"{async_prefix}def {func.name}({params_str}){return_suffix}"
-
-# api.py
-"""
-Public API for parsing and processing Python function metadata.
-
-This module provides a simplified interface for users to parse Python code
-and filter or format the extracted function information, hiding internal
-implementation details.
-"""
-
-from pathlib import Path
-from typing import Iterator
-
-from .models import FunctionInfo, FunctionContext, ClassContext
-from .parser import parse_python_file, parse_python_source
-from .filters import (
-    filter_by_context,
-    filter_by_decorator,
-    get_function_names,
-    get_async_functions,
-    get_methods,
-    format_function_signature,
-)
-
-
-__all__ = [
-    "parse_python_file",
-    "parse_python_source",
-    "filter_by_context",
-    "filter_by_decorator",
-    "get_function_names",
-    "get_async_functions",
-    "get_methods",
-    "format_function_signature",
-    "FunctionInfo",
-    "FunctionContext",
-    "ClassContext",
-]
