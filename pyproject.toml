@@ -1,5 +1,5 @@
 [project]
-name = "robofactor"
+name = "Robofactor"
 version = "0.1.0"
 description = "The robot who refactors: /[^_^]\\"
 readme = "README.md"

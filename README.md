@@ -1,122 +1,208 @@
-# robofactor
-The robot who refactors: /[^_^]\
+# Robofactor
+
+> The robot who refactors: /[^_^]\
+
+Robofactor is a command-line tool that leverages the DSPy framework to automatically analyze, plan, and refactor Python code. It takes a Python file as input, uses a large language model to generate a refactored version, and then programmatically evaluates the result for correctness and quality improvements. The goal is to provide an intelligent assistant that helps developers improve their codebase by enhancing readability, maintainability, and adherence to best practices.
 
 ## Table of Contents
+
+- [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Architecture](#architecture)
-  - [Overview](#overview)
-  - [Component Breakdown](#component-breakdown)
+- [How It Works](#how-it-works)
+- [Development](#development)
+- [Contributing](#contributing)
+
+## Features
+
+- **AI-Powered Refactoring**: Leverages the [DSPy](https://github.com/stanfordnlp/dspy) framework to intelligently analyze, plan, and rewrite Python code for improved quality and maintainability.
+- **Robust Multi-Stage Evaluation**: Ensures the quality of refactored code through a comprehensive pipeline that includes syntax validation, `flake8` quality analysis, and functional correctness testing.
+- **Deep Code Comprehension**: Utilizes Python's Abstract Syntax Tree (AST) to parse and understand the structure, context, and metadata of functions within the source code.
+- **Rich CLI Experience**: Provides a user-friendly command-line interface powered by `Typer` and `Rich`, offering clear, formatted output and progress indicators.
+- **Experiment Tracing**: Integrates with [MLflow](https://mlflow.org/) for detailed tracing and logging of refactoring runs, enabling reproducibility and performance analysis.
 
 ## Installation
 
-### Prerequisites
+This project uses `uv` for fast and efficient dependency management.
 
-This project uses `uv` for package management. Before you begin, please install `uv` by following the official instructions: [https://github.com/astral-sh/uv#installation](https://github.com/astral-sh/uv#installation).
+1.  **Prerequisite: Install `uv`**
 
-### Standard Installation
+    If you do not have `uv` installed, you can install it with pip:
+    ```bash
+    pip install uv
+    ```
 
-For regular use of the `robofactor` CLI tool. This will install the package and its required dependencies.
+2.  **Clone the Repository**
 
-```bash
-# Clone the repository
-git clone https://github.com/ethan-wickstrom/robofactor.git
-cd robofactor
+    Clone the project repository from GitHub:
+    ```bash
+    git clone https://github.com/ethan-wickstrom/robofactor.git
+    cd robofactor
+    ```
 
-# Install using the Makefile
-make install
-```
+3.  **Install Dependencies**
 
-### Developer Installation
+    The `Makefile` provides convenient commands for installation. Choose the one that fits your needs.
 
-If you plan to contribute to the project, you'll need to install the development dependencies (e.g., for linting, formatting, and testing).
+    *   **Standard Installation**
 
-```bash
-# Clone the repository
-git clone https://github.com/ethan-wickstrom/robofactor.git
-cd robofactor
+        For regular use of the `robofactor` CLI tool, run the following command. This installs only the essential production dependencies.
+        ```bash
+        make install
+        ```
 
-# Install with all development dependencies
-make install-dev
-```
+    *   **Development Installation**
+
+        If you plan to contribute to the project, run tests, or use the development tools (like linters and formatters), use this command. It installs all dependencies, including the development-specific ones.
+        ```bash
+        make install-dev
+        ```
 
 ## Usage
 
-The `robofactor` command-line tool analyzes and refactors Python code using a large language model.
+Robofactor is a command-line tool designed to refactor a single Python file at a time.
 
-### Basic Syntax
-
-The tool is invoked with the `robofactor` command, followed by options and the path to the Python file you want to process.
+To analyze and refactor a file, provide the path to the script:
 
 ```bash
-robofactor [OPTIONS] path/to/your/file.py
+robofactor path/to/your/file.py
 ```
 
-### Examples
+By default, the tool will print the refactored code to the console without modifying the original file.
 
-#### 1. Analyze a File (Dry Run)
+### Key Options
 
-To see the suggested refactoring without modifying the original file, simply provide the path to the file. The refactored code will be printed to the console.
+You can customize the behavior of Robofactor using the following command-line options:
 
-```bash
-robofactor path/to/your/code.py
+*   `--write`: Writes the refactored code directly back to the source file.
+    ```bash
+    robofactor path/to/your/file.py --write
+    ```
+*   `--dog-food`: A special mode to run the refactorer on its own source code. This is useful for testing and demonstration.
+    ```bash
+    robofactor --dog-food
+    ```
+*   `--optimize`: Forces the recompilation of the underlying DSPy model. This can be slow but may improve results if the logic has changed.
+*   `--task-llm` & `--prompt-llm`: Specify the large language models to use. The `task-llm` performs the main refactoring, while the `prompt-llm` is used during the optimization phase.
+    ```bash
+    # Example using different models
+    robofactor path/to/file.py --task-llm gpt-4o --prompt-llm gpt-4-turbo
+    ```
+*   `--tracing` & `--mlflow-uri`: Configure integration with MLflow for experiment tracking. Tracing is enabled by default.
+    ```bash
+    # Disable tracing
+    robofactor path/to/file.py --no-tracing
+
+    # Point to a different MLflow instance
+    robofactor path/to/file.py --mlflow-uri http://your-mlflow-server:5000
+    ```
+
+### Full Help Text
+
+For a complete list of all available commands and options, you can run `robofactor --help`.
+
+<details>
+<summary>Click to view the full CLI help text</summary>
+
+```text
+                                                                                                    
+ Usage: main [OPTIONS] [PATH]                                                                       
+                                                                                                    
+ A DSPy-powered tool to analyze, plan, and refactor Python code.                                    
+                                                                                                    
+                                                                                                    
+ Arguments 
+ ─────────────────────────────────────────────────────────────────────────────────────────────────── 
+   path      [PATH]  Path to the Python file to refactor. [default: None]                         
+                                                                                                    
+ Options 
+ ─────────────────────────────────────────────────────────────────────────────────────────────────── 
+ --dog-food                                    Self-refactor the script you are running.          
+ --write                                       Write the refactored code back to the file.        
+ --optimize                                    Force re-optimization of the DSPy model.           
+ --task-llm                              TEXT  Model for the main refactoring task.               
+                                               [default:                                          
+                                               gemini/gemini-2.5-flash-lite-preview-06-17]        
+ --prompt-llm                            TEXT  Model for generating prompts during optimization.  
+                                               [default: gemini/gemini-2.5-pro]                   
+ --tracing               --no-tracing          Enable MLflow tracing. [default: tracing]          
+ --mlflow-uri                            TEXT  MLflow tracking server URI.                        
+                                               [default: http://127.0.0.1:5000]                   
+ --mlflow-experiment                     TEXT  MLflow experiment name. [default: robofactor]      
+ --install-completion                          Install completion for the current shell.          
+ --show-completion                             Show completion for the current shell, to copy it  
+                                               or customize the installation.                     
+ --help                                        Show this message and exit.                        
+                                                                                                    
+
 ```
 
-#### 2. Refactor and Save Changes
+</details>
 
-To apply the refactoring and write the changes back to the original file, use the `--write` flag.
+## How It Works
 
-```bash
-robofactor --write path/to/your/code.py
+Robofactor employs a multi-stage pipeline to intelligently refactor Python code, combining static analysis with the power of Large Language Models. The process is as follows:
+
+1.  **Code Parsing & Analysis**
+    The tool begins by parsing the target Python file into an Abstract Syntax Tree (AST). This detailed structural analysis, handled by the logic in `src/robofactor/function_extraction.py`, allows the tool to understand the code's components, such as functions and their signatures, before any refactoring begins.
+
+2.  **AI-Powered Refactoring**
+    The core refactoring logic is driven by a `dspy.Module` named `CodeRefactor` (found in `src/robofactor/dspy_modules.py`). This module orchestrates a process where a Large Language Model (LLM) first analyzes the code, creates a detailed plan for improvement, and then implements that plan by generating new, refactored code.
+
+3.  **Rigorous Evaluation Pipeline**
+    The newly generated code is not trusted blindly. It is immediately passed to a comprehensive evaluation pipeline, orchestrated by the `evaluate_refactored_code` function in `src/robofactor/evaluation.py`. This pipeline performs a series of critical checks:
+    *   **Syntax Validation**: Ensures the code is syntactically correct Python.
+    *   **Code Quality Analysis**: Measures metrics like docstring coverage, type hinting, and complexity using AST analysis and `flake8`.
+    *   **Functional Correctness**: Executes the refactored code against a set of test cases in a sandboxed environment to verify that its behavior remains unchanged.
+
+4.  **Rich Terminal Output**
+    Finally, the entire process—from the AI's reasoning and refactoring plan to the detailed results of the evaluation—is presented to the user in a clear and readable format. This is handled by functions in `src/robofactor/ui.py`, which leverage the `rich` library to create styled tables and syntax-highlighted code for an intuitive user experience.
+
+## Development
+
+To get started with development, clone the repository and set up the environment using the provided Makefile. This project uses `uv` for package management and `ruff` for linting and formatting.
+
+### Setup
+
+Install all dependencies, including development tools, by running:
+
+```sh
+make install-dev
 ```
 
-#### 3. Use a Different Language Model
+### Code Quality & Testing
 
-You can specify a different model for the main refactoring task using the `--task-llm` option.
+The Makefile provides several targets to help maintain code quality.
 
-```bash
-robofactor --task-llm "anthropic/claude-3.5-sonnet" --write path/to/your/code.py
-```
+*   **Run all checks**: To run linting, type-checking, and tests all at once, use:
+    ```sh
+    make check
+    ```
 
-#### 4. Self-Refactor ("Dogfooding")
+*   **Linting**: To check for code style issues with `ruff`, run:
+    ```sh
+    make lint
+    ```
 
-The tool can even refactor its own source code. Use the `--dog-food` flag for this special mode.
+*   **Formatting**: To automatically format the code with `ruff` and `isort`, run:
+    ```sh
+    make format
+    ```
 
-```bash
-# Analyze robofactor's own code
-robofactor --dog-food
+*   **Type Checking**: To perform static type analysis with `mypy`, use:
+    ```sh
+    make type-check
+    ```
 
-# Analyze and save changes to robofactor's code
-robofactor --dog-food --write
-```
+*   **Running Tests**: To execute the test suite with `pytest`, run:
+    ```sh
+    make test
+    ```
 
-### Advanced Usage: MLflow Tracing
+## Contributing
 
-If you have an MLflow server running, you can trace the execution of the refactoring process.
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-```bash
-# Ensure your MLflow server is running, e.g., at http://127.0.0.1:5000
+If you have a suggestion that would make this better, or if you've found a bug, please open an issue on our GitHub repository. You can do so by visiting the [Issues page](https://github.com/ethan-wickstrom/robofactor/issues).
 
-robofactor \
-  --mlflow-uri "http://127.0.0.1:5000" \
-  --mlflow-experiment "refactoring_experiments" \
-  --write path/to/your/code.py
-```
-
-## Architecture
-
-### Overview
-
-Robofactor is a command-line tool designed to automatically analyze and refactor Python code using a large language model integrated via the DSPy framework. The architecture is modular, centered around a main controller (`main.py`) that orchestrates the entire process. The flow begins when the user specifies a target file. The `function_extraction.py` module first parses this file using an Abstract Syntax Tree (AST) to understand its structure. This structured data is then fed into the core `dspy_modules.py`, where an AI model generates a refactoring plan and produces new code. This new code is then rigorously assessed by the `evaluation.py` module, which leverages `analysis.py` to perform a series of static and dynamic checks, including syntax validation, quality metrics, and functional testing. Finally, the `ui.py` module presents a detailed report of the refactoring process and the evaluation results to the user in the terminal.
-
-### Component Breakdown
-
-- `src/robofactor/config.py`: Acts as the central configuration hub, storing global settings and parameters that control the application's behavior.
-- `src/robofactor/analysis.py`: Provides a toolkit for static and dynamic code analysis, including syntax checks, style linting (flake8), and running code against test cases in a sandboxed environment.
-- `src/robofactor/ui.py`: Manages the command-line user interface, responsible for formatting and displaying the refactoring process and final evaluation results to the user.
-- `src/robofactor/evaluation.py`: Orchestrates the comprehensive evaluation of refactored code, sequencing checks for syntax, quality, and functional correctness in a fail-fast manner.
-- `src/robofactor/functional_types.py`: Defines `Ok` and `Err` result types to enable robust, functional-style error handling, particularly within the evaluation pipeline.
-- `src/robofactor/utils.py`: A utility module containing helper functions, such as suppressing non-critical warnings from third-party libraries like Pydantic.
-- `src/robofactor/dspy_modules.py`: Contains the core AI logic, defining the DSPy modules (`CodeRefactor`, `RefactoringEvaluator`) that use a language model to analyze, plan, and implement code refactorings.
-- `src/robofactor/function_extraction.py`: Performs static analysis on Python source code using AST to extract detailed metadata about functions, which serves as input for the refactoring model.
-- `src/robofactor/main.py`: The main entry point of the application. It defines the CLI, parses user arguments, and orchestrates the end-to-end refactoring workflow from code analysis to final output.
+Thank you for helping to improve Robofactor!
