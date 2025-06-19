@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean test test-unit test-integration lint format type-check check build docs serve-docs
+.PHONY: help install install-dev clean test test-unit test-integration lint format type-check check build docs serve-docs readme
 
 # Default target
 help:
@@ -13,6 +13,7 @@ help:
 	@echo "  format        Format code with black and isort"
 	@echo "  type-check    Run mypy type checking"
 	@echo "  check         Run all checks (lint, type-check, test)"
+	@echo "  readme        Generate README.md using DSPy"
 
 # Installation targets
 install:
@@ -48,3 +49,7 @@ type-check:
 
 # Combined checks
 check: lint type-check test
+
+# Documentation
+readme:
+	uv run scripts/generate_readme.py

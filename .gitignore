@@ -15,6 +15,7 @@ wheels/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+scripts/__pycache__/
 
 # Test & Coverage reports
 htmlcov/
