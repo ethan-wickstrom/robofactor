@@ -21,9 +21,8 @@ dependencies = [
   "rich>=13.7.1",
   "pyflakes>=3.3.2",
   "flake8>=7.2.0",
-  "dspy-ai>=2.6.27",
+  "dspy-ai==2.6.19",
   "mlflow>=3.1.0",
-  "dspy>=2.6.27",
 ]
 
 [project.urls]
@@ -123,3 +122,6 @@ include_trailing_comma = true
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.uv.sources]
+dspy = { git = "https://github.com/stanfordnlp/dspy.git" }
