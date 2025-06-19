@@ -15,9 +15,10 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 
 from . import config, ui
-from .analysis_utils import _extract_python_code, check_syntax
+from .analysis_utils import _extract_python_code
 from .dspy_modules import CodeRefactor, RefactoringEvaluator, get_training_data
-from .evaluation import evaluate_refactoring
+from .evaluation import TestCase, evaluate_refactored_code
+from .functional_types import Err, Ok
 
 app = typer.Typer()
 
@@ -56,17 +57,17 @@ def _load_or_compile_model(
             metric=RefactoringEvaluator(),
             prompt_model=prompt_llm,
             task_model=task_llm,
-            auto="heavy",
+            auto="light",
             num_threads=8,
         )
         teleprompter.compile(
             refactorer, trainset=get_training_data(), requires_permission_to_run=False
         )
         console.print(f"Optimization complete. Saving to {optimizer_path}...")
-        self_correcting_refactorer.save(str(optimizer_path))
+        self_correcting_refactorer.save(str(optimizer_path), save_program=True)
     else:
         console.print(f"Loading optimized model from {optimizer_path}...")
-        self_correcting_refactorer.load(str(optimizer_path))
+        self_correcting_refactorer = dspy.load(str(optimizer_path))
         console.print("[green]Optimized model loaded successfully![/green]")
 
     return self_correcting_refactorer
@@ -93,19 +94,32 @@ def _run_refactoring_on_file(
     prediction = refactorer(**refactor_example.inputs())
     ui.display_refactoring_process(console, prediction)
 
-    evaluation = evaluate_refactoring(prediction, refactor_example)
-    ui.display_evaluation_results(console, evaluation)
-
     refactored_code = _extract_python_code(prediction.refactored_code)
-    is_valid, _, err = check_syntax(refactored_code)
+    raw_tests = refactor_example.get("test_cases", [])
+    tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
 
-    if write:
-        if is_valid:
-            console.print(f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]")
-            script_path.write_text(refactored_code, encoding="utf-8")
-            console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
-        else:
-            console.print(f"[bold red]Skipping write-back due to syntax errors:[/bold red]\n{err}")
+    evaluation = evaluate_refactored_code(refactored_code, tests)
+
+    match evaluation:
+        case Ok(eval_data):
+            ui.display_evaluation_results(console, eval_data)
+            if write:
+                console.print(
+                    f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]"
+                )
+                script_path.write_text(refactored_code, encoding="utf-8")
+                console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
+        case Err(error_message):
+            console.print(
+                Panel(
+                    f"[bold red]Evaluation Failed:[/bold red]\n{error_message}",
+                    border_style="red",
+                )
+            )
+            if write:
+                console.print(
+                    "[bold yellow]Skipping write-back due to evaluation failure.[/bold yellow]"
+                )
 
 
 @app.command()

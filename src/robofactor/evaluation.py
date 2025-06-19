@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
-import dspy
 from pydantic import BaseModel, Field
 
 from . import analysis_utils
+from .functional_types import Err, Ok, Result
 
 
 class TestCase(BaseModel):
@@ -33,14 +33,6 @@ class CodeQualityScores(BaseModel):
     linting_issues: list[str] = Field(default_factory=list)
 
 
-class SyntaxCheckResult(NamedTuple):
-    """Encapsulates the result of a syntax check."""
-
-    is_valid: bool
-    func_name: str | None
-    error_message: str | None
-
-
 class FunctionalCheckResult(NamedTuple):
     """Encapsulates the result of functional correctness tests."""
 
@@ -49,60 +41,81 @@ class FunctionalCheckResult(NamedTuple):
 
 
 class EvaluationResult(NamedTuple):
-    """Holds all evaluation results for a piece of refactored code."""
+    """Holds all successful evaluation results for a piece of refactored code."""
 
     code: str
-    syntax_check: SyntaxCheckResult
-    quality_scores: CodeQualityScores | None
-    functional_check: FunctionalCheckResult | None
+    func_name: str
+    quality_scores: CodeQualityScores
+    functional_check: FunctionalCheckResult
 
 
-def evaluate_refactoring(prediction: dspy.Prediction, example: dspy.Example) -> EvaluationResult:
+def _check_syntax(code: str) -> Result[str, str]:
+    """Checks for valid Python syntax and returns the function name if valid."""
+    is_valid, func_name, err = analysis_utils.check_syntax(code)
+    if not is_valid or not func_name:
+        return Err(f"Syntax Check Failed: {err or 'No function found.'}")
+    return Ok(func_name)
+
+
+def _check_quality(code: str, func_name: str) -> Result[CodeQualityScores, str]:
+    """Checks code quality and returns the scores if successful."""
+    try:
+        quality = analysis_utils.check_code_quality(code, func_name)
+        return Ok(quality)
+    except Exception as e:
+        return Err(f"Quality Check Failed: {e}")
+
+
+def _check_functional_correctness(
+    code: str, func_name: str, tests: list[TestCase]
+) -> Result[FunctionalCheckResult, str]:
+    """Runs functional tests and returns the pass rate if successful."""
+    if not tests:
+        return Ok(FunctionalCheckResult(passed_tests=0, total_tests=0))
+
+    try:
+        passed_tests = analysis_utils.check_functional_correctness(code, func_name, tests)
+        return Ok(FunctionalCheckResult(passed_tests, len(tests)))
+    except Exception as e:
+        return Err(f"Functional Check Failed: {e}")
+
+
+def evaluate_refactored_code(
+    code: str, tests: list[TestCase]
+) -> Result[EvaluationResult, str]:
     """
-    Performs a full evaluation of the refactored code without any I/O.
+    Performs a full evaluation of the refactored code.
+
+    This function orchestrates a pipeline of checks (syntax, quality, functional)
+    and returns a comprehensive result. It uses a functional, railway-oriented
+    approach with the `Result` type to handle potential failures at each stage.
 
     Args:
-        prediction: The dspy.Prediction object containing the refactored code.
-        example: The dspy.Example object containing test cases.
+        code: The refactored Python code to evaluate.
+        tests: A list of test cases to verify functional correctness.
 
     Returns:
-        An EvaluationResult object with all analysis data.
+        - Ok(EvaluationResult) if all checks pass.
+        - Err(str) with a descriptive error message if any check fails.
     """
-    code = analysis_utils._extract_python_code(prediction.refactored_code)
-    is_valid, func_name, err = analysis_utils.check_syntax(code)
-    syntax_result = SyntaxCheckResult(is_valid, func_name, err)
+    syntax_result = _check_syntax(code)
+    if isinstance(syntax_result, Err):
+        return syntax_result
+    func_name = syntax_result.value
 
-    if not is_valid:
-        return EvaluationResult(
+    quality_result = _check_quality(code, func_name)
+    if isinstance(quality_result, Err):
+        return quality_result
+
+    functional_result = _check_functional_correctness(code, func_name, tests)
+    if isinstance(functional_result, Err):
+        return functional_result
+
+    return Ok(
+        EvaluationResult(
             code=code,
-            syntax_check=syntax_result,
-            quality_scores=None,
-            functional_check=None,
+            func_name=func_name,
+            quality_scores=quality_result.value,
+            functional_check=functional_result.value,
         )
-
-    raw_tests = example.get("test_cases")
-    tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
-
-    if not tests:  # Module-level refactoring without specific tests
-        quality = analysis_utils.check_code_quality(code)
-        functional_result = FunctionalCheckResult(passed_tests=0, total_tests=0)
-    else:  # Function-level refactoring with tests
-        if not func_name:
-            err_msg = "Tests provided, but no function found in code snippet."
-            return EvaluationResult(
-                code=code,
-                syntax_check=SyntaxCheckResult(is_valid, None, err_msg),
-                quality_scores=None,
-                functional_check=None,
-            )
-
-        quality = analysis_utils.check_code_quality(code, func_name)
-        passed_count = analysis_utils.check_functional_correctness(code, func_name, tests)
-        functional_result = FunctionalCheckResult(passed_count, len(tests))
-
-    return EvaluationResult(
-        code=code,
-        syntax_check=syntax_result,
-        quality_scores=quality,
-        functional_check=functional_result,
     )

@@ -8,13 +8,13 @@ to simplify management and modification.
 from pathlib import Path
 
 # --- File Paths ---
-OPTIMIZER_FILENAME: Path = Path("optimized.json")
+OPTIMIZER_FILENAME: Path = Path("optimized/")
 
 # --- DSPy Model Configuration ---
 DEFAULT_TASK_LLM: str = "gemini/gemini-2.5-flash-lite-preview-06-17"
 DEFAULT_PROMPT_LLM: str = "gemini/gemini-2.5-pro"
 TASK_LLM_MAX_TOKENS: int = 64000
-PROMPT_LLM_MAX_TOKENS: int = 32000
+PROMPT_LLM_MAX_TOKENS: int = 64000
 
 # --- Refinement Configuration ---
 REFINEMENT_THRESHOLD: float = 0.9

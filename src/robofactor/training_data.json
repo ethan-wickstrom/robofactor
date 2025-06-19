@@ -1,55 +1,181 @@
 [
   {
-    "code_snippet": "def process_data(d):\n    res = [x['price'] * x['qty'] for x in d if x['qty'] > 0]\n    total = 0\n    for r in res:\n        total += r\n    tax = 0.08\n    final_total = total * (1 + tax)\n    return final_total",
+    "code_snippet": "import os\n\nTAX_RATES_BY_STATE = {\n    'default': 0.08,\n    'CA': 0.095,\n    'NY': 0.088,\n    'TX': 0.0825\n}\n\ndef get_valid_line_totals(items_list):\n    temp_list = []\n    for item in items_list:\n        is_active = True\n        if 'status' in item and item['status'] == 'CANCELLED':\n            is_active = False\n        \n        if not is_active:\n            continue\n\n        try:\n            q = int(item.get('qty', '0'))\n        except Exception:\n            q = 0\n\n        if q > 0:\n            item_type = item.get('type')\n            if item_type == 'PRODUCT':\n                total = item['price'] * q\n                temp_list.append(total)\n            elif item_type == 'SERVICE':\n                total = item['price'] + item.get('fee', 0)\n                temp_list.append(total)\n    return temp_list\n\ndef calculate_final_price(order_data):\n    line_totals = get_valid_line_totals(order_data.get('items', []))\n\n    subtotal = 0\n    for val in line_totals:\n        subtotal += val\n\n    customer_data = order_data.get('customer_info', {})\n    customer_level = customer_data.get('level', 'BRONZE')\n    discount_percentage = 0.0\n    if customer_level == 'GOLD':\n        if subtotal > 500:\n            discount_percentage = 0.20\n        else:\n            discount_percentage = 0.15\n    elif customer_level == 'SILVER':\n        if subtotal > 0:\n            discount_percentage = 0.05\n\n    price_after_discount = subtotal * (1 - discount_percentage)\n\n    region = customer_data.get('region', 'default')\n    tax_rate = TAX_RATES_BY_STATE.get(region, TAX_RATES_BY_STATE['default'])\n\n    final_total = price_after_discount * (1 + tax_rate)\n\n    return f\"${final_total:.2f}\"",
     "test_cases": [
       {
-        "args": [[{"price": 10, "qty": 2}, {"price": 5, "qty": -1}]],
+        "args": [
+          {
+            "items": [
+              {
+                "id": "a1",
+                "price": 10.5,
+                "qty": "2",
+                "type": "PRODUCT",
+                "status": "ACTIVE"
+              },
+              {
+                "id": "a2",
+                "price": 5.0,
+                "qty": -1,
+                "type": "PRODUCT",
+                "status": "ACTIVE"
+              },
+              {
+                "id": "a3",
+                "price": 100.0,
+                "qty": 1,
+                "type": "PRODUCT",
+                "status": "CANCELLED"
+              },
+              {
+                "id": "s1",
+                "price": 50.0,
+                "fee": 15.0,
+                "qty": 1,
+                "type": "SERVICE"
+              }
+            ],
+            "customer_info": { "level": "SILVER", "region": "CA" }
+          }
+        ],
         "kwargs": {},
-        "expected_output": 21.6
+        "expected_output": "$89.87"
       },
       {
-        "args": [[{"price": 100, "qty": 1}, {"price": 20, "qty": 5}]],
+        "args": [
+          {
+            "items": [
+              {
+                "id": "p1",
+                "price": 250,
+                "qty": 2,
+                "type": "PRODUCT",
+                "status": "ACTIVE"
+              },
+              {
+                "id": "p2",
+                "price": 150,
+                "qty": "1",
+                "type": "PRODUCT",
+                "status": "ACTIVE"
+              },
+              {
+                "id": "s2",
+                "price": 75,
+                "fee": 25,
+                "qty": 1,
+                "type": "SERVICE"
+              }
+            ],
+            "customer_info": { "level": "GOLD", "region": "NY" }
+          }
+        ],
         "kwargs": {},
-        "expected_output": 216.0
+        "expected_output": "$653.40"
       },
       {
-        "args": [[]],
+        "args": [
+          {
+            "items": [],
+            "customer_info": { "level": "BRONZE", "region": "TX" }
+          }
+        ],
         "kwargs": {},
-        "expected_output": 0.0
+        "expected_output": "$0.00"
+      },
+      {
+        "args": [
+          {
+            "items": [
+              {
+                "id": "p1",
+                "price": 99.99,
+                "qty": 1,
+                "type": "PRODUCT",
+                "status": "ACTIVE"
+              }
+            ],
+            "customer_info": {}
+          }
+        ],
+        "kwargs": {},
+        "expected_output": "$107.99"
       }
     ]
   },
   {
-    "code_snippet": "from datetime import datetime\n\ndef proc_trans(t, d1, d2, disc_rules):\n    # Filter transactions by date range\n    start_date = datetime.strptime(d1, '%Y-%m-%d')\n    end_date = datetime.strptime(d2, '%Y-%m-%d')\n    filtered_t = []\n    for trans in t:\n        trans_date = datetime.strptime(trans[2], '%Y-%m-%d')\n        if start_date <= trans_date <= end_date:\n            filtered_t.append(trans)\n\n    # Group transactions by user\n    user_agg = {}\n    for user, amount, _ in filtered_t:\n        if user not in user_agg:\n            user_agg[user] = {'total': 0, 'count': 0, 'amounts': []}\n        user_agg[user]['total'] += amount\n        user_agg[user]['count'] += 1\n        user_agg[user]['amounts'].append(amount)\n\n    # Calculate final results for each user\n    result_list = []\n    for user, data in user_agg.items():\n        total = data['total']\n        count = data['count']\n        avg_amount = total / count if count > 0 else 0\n        max_amount = max(data['amounts']) if data['amounts'] else 0\n\n        # Apply discounts\n        max_disc = 0\n        for rule_type, threshold, discount in disc_rules:\n            if rule_type == 'total' and total > threshold:\n                max_disc = max(max_disc, discount)\n            elif rule_type == 'count' and count > threshold:\n                max_disc = max(max_disc, discount)\n            elif rule_type == 'max' and max_amount > threshold:\n                max_disc = max(max_disc, discount)\n        \n        final_price = total * (1 - max_disc)\n        amounts_str = ';'.join(map(str, sorted(data['amounts'])))\n\n        result_list.append([user, total, avg_amount, max_amount, max_disc, final_price, amounts_str])\n    \n    return result_list",
+    "code_snippet": "from datetime import datetime\n\n_g_report_data = {}\n\ndef _parse_and_filter(transactions_raw, config_str):\n    global _g_report_data\n    _g_report_data = {}\n\n    configs = {}\n    for part in config_str.split(';'):\n        if '=' in part:\n            key, val = part.split('=', 1)\n            configs[key] = val\n\n    start_date = datetime.strptime(configs['start'], '%Y-%m-%d')\n    end_date = datetime.strptime(configs['end'], '%Y-%m-%d')\n    \n    filtered_transactions = []\n    for trans in transactions_raw:\n        if trans.get('user') == 'system_user' or 'date_str' not in trans:\n            continue\n        try:\n            trans_date = datetime.strptime(trans['date_str'], '%Y-%m-%d')\n            if start_date <= trans_date <= end_date:\n                amount = trans.get('amount', trans.get('amt', 0))\n                if isinstance(amount, (int, float)) and amount > 0:\n                    filtered_transactions.append({'user': trans['user'], 'amount': amount})\n        except Exception:\n            pass\n    return filtered_transactions, configs.get('rules', '')\n\ndef _aggregate_and_calculate(filtered_list, rules_str):\n    global _g_report_data\n    for item in filtered_list:\n        user = item['user']\n        if user not in _g_report_data:\n            _g_report_data[user] = {'amounts': [], 'total': 0.0}\n        _g_report_data[user]['amounts'].append(item['amount'])\n        _g_report_data[user]['total'] += item['amount']\n\n    final_report = {}\n    raw_rules = rules_str.split(',') if rules_str else []\n    for user, data in _g_report_data.items():\n        total = data['total']\n        count = len(data['amounts'])\n        max_val = max(data['amounts']) if data['amounts'] else 0\n        \n        discounts = [0.0]\n        for rule in raw_rules:\n            if ':' in rule and '>' in rule:\n                condition, discount_val_str = rule.split(':')\n                rule_type, threshold_str = condition.split('>')\n                if rule_type == 'total' and total > float(threshold_str):\n                    discounts.append(float(discount_val_str))\n                elif rule_type == 'count' and count > float(threshold_str):\n                    discounts.append(float(discount_val_str))\n                elif rule_type == 'max' and max_val > float(threshold_str):\n                    discounts.append(float(discount_val_str))\n        \n        final_discount = max(discounts)\n        final_price = total * (1 - final_discount)\n\n        final_report[user] = {\n            'total_spent': round(total, 2),\n            'transaction_count': count,\n            'average_spend': round(total / count if count else 0, 2),\n            'max_transaction': round(max_val, 2),\n            'applied_discount_rate': final_discount,\n            'final_cost': round(final_price, 2),\n            'transactions_sorted_str': ';'.join(map(str, sorted(data['amounts'])))\n        }\n    return final_report\n\ndef process_and_generate_report(transactions, config):\n    filtered_data, rules = _parse_and_filter(transactions, config)\n    result = _aggregate_and_calculate(filtered_data, rules)\n    return result",
     "test_cases": [
       {
         "args": [
           [
-            ["user1", 100, "2024-01-01"],
-            ["user1", 200, "2024-01-02"],
-            ["user2", 150, "2024-01-01"],
-            ["user1", 50, "2024-01-03"],
-            ["user2", 300, "2024-01-04"]
+            { "user": "user1", "amount": 100, "date_str": "2024-01-01" },
+            { "user": "user1", "amt": 200, "date_str": "2024-01-02" },
+            { "user": "user2", "amount": 150, "date_str": "2024-01-01" },
+            { "user": "user1", "amount": 50, "date_str": "2024-01-03" },
+            { "user": "user2", "amount": 300, "date_str": "2024-01-04" },
+            { "user": "system_user", "amount": 999, "date_str": "2024-01-02" },
+            { "user": "user3", "amount": 500, "date_str": "2024-02-05" }
           ],
-          "2024-01-01",
-          "2024-01-03",
-          [["total", 250, 0.1], ["count", 2, 0.05], ["max", 150, 0.15]]
+          "start=2024-01-01;end=2024-01-03;rules=total>300:0.1,count>2:0.15,max>199:0.2"
         ],
         "kwargs": {},
-        "expected_output": [
-            ["user1", 350, 116.66666666666667, 200, 0.3, 245.0, "50;100;200"],
-            ["user2", 150, 150.0, 150, 0.15, 127.5, "150"]
-        ]
+        "expected_output": {
+          "user1": {
+            "total_spent": 350.0,
+            "transaction_count": 3,
+            "average_spend": 116.67,
+            "max_transaction": 200.0,
+            "applied_discount_rate": 0.2,
+            "final_cost": 280.0,
+            "transactions_sorted_str": "50;100;200"
+          },
+          "user2": {
+            "total_spent": 150.0,
+            "transaction_count": 1,
+            "average_spend": 150.0,
+            "max_transaction": 150.0,
+            "applied_discount_rate": 0.0,
+            "final_cost": 150.0,
+            "transactions_sorted_str": "150"
+          }
+        }
       },
       {
-        "args": [[["user1", 100, "2024-01-01"]], "2024-01-01", "2024-01-01", []],
+        "args": [
+          [{ "user": "user1", "amount": 100, "date_str": "2024-01-01" }],
+          "start=2024-01-01;end=2024-01-01;rules="
+        ],
         "kwargs": {},
-        "expected_output": [["user1", 100, 100.0, 100, 0, 100.0, "100"]]
+        "expected_output": {
+          "user1": {
+            "total_spent": 100.0,
+            "transaction_count": 1,
+            "average_spend": 100.0,
+            "max_transaction": 100.0,
+            "applied_discount_rate": 0.0,
+            "final_cost": 100.0,
+            "transactions_sorted_str": "100"
+          }
+        }
       },
       {
-        "args": [[], "2024-01-01", "2024-01-31", [["total", 100, 0.1]]],
+        "args": [[], "start=2024-01-01;end=2024-01-31;rules=total>100:0.1"],
         "kwargs": {},
-        "expected_output": []
+        "expected_output": {}
+      },
+      {
+        "args": [
+          [
+            { "user": "user_A", "amt": 50, "date_str": "2023-12-15" },
+            { "user": "user_B", "amount": -20, "date_str": "2023-12-15" },
+            { "user": "user_C", "date_str": "2023-12-15" },
+            { "user": "user_D", "amount": 100, "date_str": "not-a-date" }
+          ],
+          "start=2023-12-01;end=2023-12-31;rules=count>0:0.05"
+        ],
+        "kwargs": {},
+        "expected_output": {}
       }
     ]
   }

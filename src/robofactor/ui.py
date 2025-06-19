@@ -52,22 +52,8 @@ def display_evaluation_results(console: Console, result: EvaluationResult) -> No
     """Displays the evaluation results using rich components."""
     console.print(Rule("[bold yellow]Final Output Evaluation[/bold yellow]"))
 
-    if not result.syntax_check.is_valid:
-        error_msg = result.syntax_check.error_message or "Unknown syntax error."
-        console.print(
-            Panel(
-                f"[bold red]Syntax Error:[/bold red] {error_msg}",
-                title="[bold red]Evaluation Failed[/bold red]",
-                border_style="red",
-            )
-        )
-        return
-
     quality = result.quality_scores
     func_check = result.functional_check
-    if not quality or not func_check:
-        console.print("[bold red]Error:[/bold red] Missing quality or functional results.")
-        return
 
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column()

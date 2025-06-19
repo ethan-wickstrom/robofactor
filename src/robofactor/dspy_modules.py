@@ -3,15 +3,16 @@ DSPy modules, Pydantic models, and data loading for the refactoring agent.
 """
 
 import json
+import logging
 from pathlib import Path
-from typing import List
+from typing import Any, List, Optional
 
 import dspy
 from pydantic import BaseModel, Field, field_validator
 
-from . import analysis_utils
-from .evaluation import CodeQualityScores, TestCase
-from .functional_types import Err, Ok, Result
+from . import analysis_utils, evaluation
+from .evaluation import TestCase
+from .functional_types import Err, Ok
 
 
 # --- Pydantic Models for Structured Outputs ---
@@ -141,42 +142,10 @@ class CodeRefactor(dspy.Module):
         )
 
 
-def _evaluate_syntax(code: str) -> Result[str, str]:
-    """Checks for valid Python syntax and returns the function name if valid."""
-    is_valid, func_name, err = analysis_utils.check_syntax(code)
-    if not is_valid or not func_name:
-        return Err(f"Syntax Check Failed: {err or 'No function found.'}")
-    return Ok(func_name)
-
-
-def _evaluate_quality(code: str, func_name: str) -> Result[CodeQualityScores, str]:
-    """Checks code quality and returns the scores if successful."""
-    try:
-        quality = analysis_utils.check_code_quality(code, func_name)
-        return Ok(quality)
-    except Exception as e:
-        return Err(f"Quality Check Failed: {e}")
-
-
-def _evaluate_functional_correctness(
-    code: str, func_name: str, tests: List[TestCase]
-) -> Result[float, str]:
-    """Runs functional tests and returns the pass rate if successful."""
-    if not tests:
-        return Ok(1.0)  # No tests to run, so functionally perfect by default.
-
-    try:
-        passed_tests = analysis_utils.check_functional_correctness(code, func_name, tests)
-        score = (passed_tests / len(tests)) if tests else 1.0
-        return Ok(score)
-    except Exception as e:
-        return Err(f"Functional Check Failed: {e}")
-
-
 class RefactoringEvaluator(dspy.Module):
     """
     A module to evaluate refactored code using a pipeline of programmatic checks
-    and a final LLM judgment, with robust, functional error handling.
+    and a final LLM judgment.
     """
 
     def __init__(self):
@@ -184,45 +153,80 @@ class RefactoringEvaluator(dspy.Module):
         self.evaluator = dspy.Predict(FinalEvaluation)
 
     def forward(
-        self, original_example: dspy.Example, prediction: dspy.Prediction, trace=None
+        self, original_example: dspy.Example, prediction: dspy.Prediction, trace: Optional[Any] = None
     ) -> float:
         """
-        Evaluates the refactored code. Returns 0.0 on any programmatic failure
-        to signal the optimizer, otherwise returns the LLM's final score.
+        Evaluates the refactored code through a robust, multi-stage pipeline.
+
+        This method performs the following steps:
+        1. Safely extracts the refactored code and test cases from the inputs.
+        2. Executes programmatic checks (linting, complexity, functional tests).
+        3. If programmatic checks pass, it uses an LLM to provide a final, holistic score.
+
+        Returns 0.0 on any failure to signal the optimizer, otherwise returns the LLM's score.
         """
-        code = prediction.refactored_code
-        test_cases_raw = original_example.get("test_cases", [])
-        tests: List[TestCase] = test_cases_raw if isinstance(test_cases_raw, list) and test_cases_raw is not None else []
+        # --- Stage 1: Preparation and Input Validation ---
 
-        # 1. Evaluate Syntax
-        syntax_result = _evaluate_syntax(code)
-        if isinstance(syntax_result, Err):
+        # Safely get the refactored code from the prediction object.
+        refactored_code = getattr(prediction, 'refactored_code', None)
+        if not refactored_code:
+            logging.warning("Evaluation failed: No refactored code found in the prediction.")
             return 0.0
-        func_name = syntax_result.value
 
-        # 2. Evaluate Code Quality
-        quality_result = _evaluate_quality(code, func_name)
-        if isinstance(quality_result, Err):
+        # Clean the code, removing markdown fences.
+        code_to_evaluate = analysis_utils._extract_python_code(refactored_code)
+        if not code_to_evaluate:
+            logging.warning("Evaluation failed: Extracted code is empty after cleaning.")
             return 0.0
-        quality_scores = quality_result.value
 
-        # 3. Evaluate Functional Correctness
-        functional_result = _evaluate_functional_correctness(code, func_name, tests)
-        if isinstance(functional_result, Err):
-            return 0.0
-        functional_score = functional_result.value
+        # Correctly get the list of TestCase objects directly from the example.
+        tests = getattr(original_example, 'test_cases', [])
 
-        # 4. Final LLM-based Evaluation (if all programmatic checks pass)
+        # --- Stage 2: Programmatic Evaluation ---
+
         try:
-            eval_result = self.evaluator(
-                code_snippet=code,
+            programmatic_result = evaluation.evaluate_refactored_code(code_to_evaluate, tests)
+
+            if isinstance(programmatic_result, Err):
+                # Log the specific error from the programmatic checks for better debugging.
+                logging.warning(f"Programmatic evaluation failed: {programmatic_result.error}")
+                return 0.0
+
+            # If successful, unwrap the detailed evaluation data.
+            eval_data = programmatic_result.value
+
+        except Exception as e:
+            # Catch any unexpected errors during the programmatic evaluation itself.
+            logging.error(f"An unexpected error occurred during programmatic evaluation: {e}", exc_info=True)
+            return 0.0
+
+        # --- Stage 3: LLM-based Final Judgment ---
+
+        # Prepare inputs for the final LLM evaluator.
+        quality_scores = eval_data.quality_scores
+        functional_check = eval_data.functional_check
+
+        # Calculate the functional score (pass rate).
+        if functional_check.total_tests > 0:
+            functional_score = functional_check.passed_tests / functional_check.total_tests
+        else:
+            # If there are no tests, we can't fail any. Consider it a full pass.
+            functional_score = 1.0
+
+        try:
+            # Call the LLM for the final holistic score.
+            llm_evaluation = self.evaluator(
+                code_snippet=code_to_evaluate,
                 quality_scores=quality_scores.model_dump_json(),
                 functional_score=functional_score,
             )
-            return eval_result.evaluation.final_score
-        except Exception:
-            return 0.0
+            # Return the final score from the structured output.
+            return llm_evaluation.evaluation.final_score
 
+        except Exception as e:
+            # Catch errors from the LLM call (e.g., API errors, response parsing failures).
+            logging.error(f"LLM-based evaluation failed: {e}", exc_info=True)
+            return 0.0
 
 # --- Training Data ---
 
@@ -233,11 +237,12 @@ def get_training_data() -> List[dspy.Example]:
     Decouples training data from application logic for better maintainability.
     """
     data_path = Path(__file__).parent / "training_data.json"
-    if not data_path.exists():
+    try:
+        with data_path.open("r", encoding="utf-8") as f:
+            training_json = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.warning(f"Could not load or parse training data from {data_path}: {e}")
         return []
-
-    with data_path.open("r", encoding="utf-8") as f:
-        training_json = json.load(f)
 
     examples = []
     for item in training_json:
