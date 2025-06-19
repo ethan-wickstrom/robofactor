@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 import dspy
 from pydantic import BaseModel, Field, field_validator
 
-from . import analysis_utils, evaluation
+from . import analysis, evaluation
 from .evaluation import TestCase
 from .functional_types import Err, Ok
 
@@ -52,7 +52,7 @@ class ImplementationOutput(BaseModel):
     @classmethod
     def extract_from_markdown(cls, v: str) -> str:
         """Ensures the output is raw Python code, stripping markdown fences."""
-        return analysis_utils._extract_python_code(v)
+        return analysis._extract_python_code(v)
 
 
 class EvaluationOutput(BaseModel):
@@ -174,7 +174,7 @@ class RefactoringEvaluator(dspy.Module):
             return 0.0
 
         # Clean the code, removing markdown fences.
-        code_to_evaluate = analysis_utils._extract_python_code(refactored_code)
+        code_to_evaluate = analysis._extract_python_code(refactored_code)
         if not code_to_evaluate:
             logging.warning("Evaluation failed: Extracted code is empty after cleaning.")
             return 0.0

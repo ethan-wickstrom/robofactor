@@ -11,7 +11,7 @@ from typing import Any, NamedTuple
 
 from pydantic import BaseModel, Field
 
-from . import analysis_utils
+from . import analysis
 from .functional_types import Err, Ok, Result
 
 
@@ -51,7 +51,7 @@ class EvaluationResult(NamedTuple):
 
 def _check_syntax(code: str) -> Result[str, str]:
     """Checks for valid Python syntax and returns the function name if valid."""
-    is_valid, func_name, err = analysis_utils.check_syntax(code)
+    is_valid, func_name, err = analysis.check_syntax(code)
     if not is_valid or not func_name:
         return Err(f"Syntax Check Failed: {err or 'No function found.'}")
     return Ok(func_name)
@@ -60,7 +60,7 @@ def _check_syntax(code: str) -> Result[str, str]:
 def _check_quality(code: str, func_name: str) -> Result[CodeQualityScores, str]:
     """Checks code quality and returns the scores if successful."""
     try:
-        quality = analysis_utils.check_code_quality(code, func_name)
+        quality = analysis.check_code_quality(code, func_name)
         return Ok(quality)
     except Exception as e:
         return Err(f"Quality Check Failed: {e}")
@@ -74,7 +74,7 @@ def _check_functional_correctness(
         return Ok(FunctionalCheckResult(passed_tests=0, total_tests=0))
 
     try:
-        passed_tests = analysis_utils.check_functional_correctness(code, func_name, tests)
+        passed_tests = analysis.check_functional_correctness(code, func_name, tests)
         return Ok(FunctionalCheckResult(passed_tests, len(tests)))
     except Exception as e:
         return Err(f"Functional Check Failed: {e}")

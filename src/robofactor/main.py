@@ -1,7 +1,6 @@
 """
 Main entry point for the command-line interface (CLI) of the refactoring tool.
 """
-
 from pathlib import Path
 from typing import Annotated
 
@@ -13,8 +12,8 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
 
-from .analysis_utils import _extract_python_code
 from . import config, ui, utils
+from .analysis import _extract_python_code
 from .dspy_modules import CodeRefactor, RefactoringEvaluator, get_training_data
 from .evaluation import TestCase, evaluate_refactored_code
 from .functional_types import Err, Ok
