@@ -121,7 +121,7 @@ class FunctionInfo:
     line_end: int
     column_start: int
     column_end: int
-    parameters: tuple[Parameter, ...]
+    parameters: tuple[Parameter, ...] 
     decorators: tuple[Decorator, ...]
     is_async: bool
     context: FunctionContext
@@ -176,6 +176,8 @@ def ast_node_to_source(node: ast.AST) -> str:
     try:
         return ast.unparse(node)
     except Exception:
+        # Fallback for nodes that ast.unparse might not handle gracefully.
+        # This ensures that even complex or unusual AST structures can be represented.
         return repr(node)
 
 
@@ -191,6 +193,7 @@ def extract_decorators(decorators: list[ast.expr]) -> tuple[Decorator, ...]:
     """
 
     def parse_decorator(dec: ast.expr) -> Decorator:
+        """Parses a single decorator AST node."""
         match dec:
             case ast.Name(id=name):
                 return Decorator(name=name)
@@ -200,6 +203,7 @@ def extract_decorators(decorators: list[ast.expr]) -> tuple[Decorator, ...]:
                     args=tuple(ast_node_to_source(arg) for arg in args),
                 )
             case _:
+                # Handles other cases like attribute access decorators (e.g., a.b.c)
                 return Decorator(name=ast_node_to_source(dec))
 
     return tuple(parse_decorator(dec) for dec in decorators)
@@ -224,6 +228,7 @@ def _map_parameter_defaults(args: ast.arguments) -> dict[str, str]:
     all_positional_args = args.posonlyargs + args.args
     num_defaults = len(args.defaults)
     if num_defaults > 0:
+        # Defaults correspond to the last `num_defaults` positional arguments.
         args_with_defaults = all_positional_args[-num_defaults:]
         for arg, default_node in zip(args_with_defaults, args.defaults, strict=False):
             defaults_map[arg.arg] = ast_node_to_source(default_node)
@@ -266,28 +271,33 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
     args = func_node.args
     defaults = _map_parameter_defaults(args)
 
+    # Positional-only parameters
     for arg in args.posonlyargs:
         yield _create_parameter(arg, ParameterKind.POSITIONAL_ONLY, defaults)
 
+    # Positional or keyword parameters
     for arg in args.args:
         yield _create_parameter(arg, ParameterKind.POSITIONAL_OR_KEYWORD, defaults)
 
+    # Var-positional parameter (*args)
     if args.vararg:
         yield Parameter(
             name=args.vararg.arg,
-            annotation=(
+            annotation=( 
                 ast_node_to_source(args.vararg.annotation) if args.vararg.annotation else None
             ),
             kind=ParameterKind.VAR_POSITIONAL,
         )
 
+    # Keyword-only parameters
     for arg in args.kwonlyargs:
         yield _create_parameter(arg, ParameterKind.KEYWORD_ONLY, defaults)
 
+    # Var-keyword parameter (**kwargs)
     if args.kwarg:
         yield Parameter(
             name=args.kwarg.arg,
-            annotation=(
+            annotation=( 
                 ast_node_to_source(args.kwarg.annotation) if args.kwarg.annotation else None
             ),
             kind=ParameterKind.VAR_KEYWORD,
@@ -296,7 +306,6 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
 
 def extract_docstring(func_node: FunctionDefNode) -> str | None:
     """
-
     Extract the docstring from a function node using ast.get_docstring.
 
     Args:
@@ -337,6 +346,7 @@ class _FunctionVisitor:
             case ast.ClassDef():
                 yield from self._visit_class_def(node, context)
             case _:
+                # Continue traversal for other node types.
                 for child in ast.iter_child_nodes(node):
                     yield from self.visit(child, context)
 
@@ -346,6 +356,7 @@ class _FunctionVisitor:
         """Handle FunctionDef and AsyncFunctionDef nodes."""
         yield FunctionInfo.from_ast_node(node, context)
 
+        # Recursively visit the body of the function for nested functions.
         nested_context = NestedContext(parent_function=node.name, parent_context=context)
         for child in node.body:
             yield from self.visit(child, nested_context)
@@ -355,6 +366,7 @@ class _FunctionVisitor:
     ) -> Iterator[FunctionInfo]:
         """Handle ClassDef nodes."""
         class_context = ClassContext(class_name=node.name, parent_context=context)
+        # Recursively visit the body of the class for methods and nested classes.
         for child in node.body:
             yield from self.visit(child, class_context)
 
@@ -385,10 +397,26 @@ def parse_python_file(file_path: Path) -> Iterator[FunctionInfo]:
     Yields:
         FunctionInfo objects for all functions in the file.
     """
-    with open(file_path, encoding="utf-8") as f:
-        source_code = f.read()
-    tree = ast.parse(source_code, filename=str(file_path))
-    yield from _parse_ast_and_find_functions(tree, file_path.stem)
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            source_code = f.read()
+        tree = ast.parse(source_code, filename=str(file_path))
+        yield from _parse_ast_and_find_functions(tree, file_path.stem)
+    except FileNotFoundError:
+        # Handle cases where the file does not exist.
+        print(f"Error: File not found at {file_path}")
+        # Optionally re-raise or return an empty iterator.
+        return
+    except SyntaxError as e:
+        # Handle cases where the file contains invalid Python syntax.
+        print(f"Error: Invalid Python syntax in {file_path}: {e}")
+        # Optionally re-raise or return an empty iterator.
+        return
+    except Exception as e:
+        # Catch any other unexpected errors during file processing.
+        print(f"An unexpected error occurred while processing {file_path}: {e}")
+        # Optionally re-raise or return an empty iterator.
+        return
 
 
 def parse_python_source(source_code: str, module_name: str = "<string>") -> Iterator[FunctionInfo]:
@@ -402,12 +430,24 @@ def parse_python_source(source_code: str, module_name: str = "<string>") -> Iter
     Yields:
         FunctionInfo objects for all functions in the code.
     """
-    tree = ast.parse(source_code, filename=module_name)
-    yield from _parse_ast_and_find_functions(tree, module_name)
+    try:
+        tree = ast.parse(source_code, filename=module_name)
+        yield from _parse_ast_and_find_functions(tree, module_name)
+    except SyntaxError as e:
+        # Handle cases where the source code contains invalid Python syntax.
+        print(f"Error: Invalid Python syntax in provided source: {e}")
+        # Optionally re-raise or return an empty iterator.
+        return
+    except Exception as e:
+        # Catch any other unexpected errors during source code parsing.
+        print(f"An unexpected error occurred while parsing source: {e}")
+        # Optionally re-raise or return an empty iterator.
+        return
 
 
 def filter_by_context(
-    context_type: type[FunctionContext], functions: Iterator[FunctionInfo]
+    context_type: type[FunctionContext],
+    functions: Iterator[FunctionInfo],
 ) -> Iterator[FunctionInfo]:
     """
     Filter functions by their context type (e.g., ClassContext).
@@ -423,7 +463,8 @@ def filter_by_context(
 
 
 def filter_by_decorator(
-    decorator_name: str, functions: Iterator[FunctionInfo]
+    decorator_name: str,
+    functions: Iterator[FunctionInfo],
 ) -> Iterator[FunctionInfo]:
     """
     Filter functions that have a specific decorator.
@@ -435,7 +476,11 @@ def filter_by_decorator(
     Yields:
         The functions that have the specified decorator.
     """
-    yield from (f for f in functions if any(d.name == decorator_name for d in f.decorators))
+    yield from (
+        f
+        for f in functions
+        if any(d.name == decorator_name for d in f.decorators)
+    )
 
 
 def get_function_names(functions: Iterator[FunctionInfo]) -> Iterator[str]:
@@ -509,6 +554,7 @@ def format_function_signature(func: FunctionInfo) -> str:
             case ParameterKind.POSITIONAL_ONLY:
                 param_parts.append(format_param(p))
             case ParameterKind.POSITIONAL_OR_KEYWORD:
+                # Add '/' separator if positional-only args exist and this is the first positional-or-keyword arg.
                 if not pos_only_ended and any(
                     param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
                 ):
@@ -516,6 +562,7 @@ def format_function_signature(func: FunctionInfo) -> str:
                     pos_only_ended = True
                 param_parts.append(format_param(p))
             case ParameterKind.VAR_POSITIONAL:
+                # Add '/' separator if positional-only args exist and this is the first var-positional arg.
                 if not pos_only_ended and any(
                     param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
                 ):
@@ -524,20 +571,24 @@ def format_function_signature(func: FunctionInfo) -> str:
                 param_parts.append(f"*{p.name}")
                 var_pos_added = True
             case ParameterKind.KEYWORD_ONLY:
+                # Add '/' separator if positional-only args exist and this is the first keyword-only arg.
                 if not pos_only_ended and any(
                     param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
                 ):
                     param_parts.append("/")
                     pos_only_ended = True
+                # Add '*' separator if no var-positional arg was present and this is the first keyword-only arg.
                 if not var_pos_added:
                     param_parts.append("*")
                     var_pos_added = True
                 param_parts.append(format_param(p))
             case ParameterKind.VAR_KEYWORD:
+                # Add '*' separator if no var-positional arg was present and this is the first var-keyword arg.
                 if not var_pos_added:
                     param_parts.append("*")
                 param_parts.append(f"**{p.name}")
 
+    # Ensure '/' is added if there are positional-only args but no positional-or-keyword or var-positional args.
     if not pos_only_ended and any(
         param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
     ):
