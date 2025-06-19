@@ -1,53 +1,58 @@
 #!/usr/bin/env python3
 """
-README Generator for robofactor project.
+Intelligent README Generator for the robofactor project.
 
-This module uses DSPy to automatically generate comprehensive documentation
-by analyzing the codebase structure and synthesizing a well-formatted README.
+This script leverages DSPy to perform a deep, context-aware analysis of the
+project's source code and configuration files. It synthesizes this information
+into a comprehensive, well-structured, and professional README.md file.
 
-The implementation follows a pure functional programming paradigm:
-- **Stateless & Immutable**: All data is stored in immutable ADTs (dataclasses).
-- **Pure Functions**: Core logic consists of pure functions that transform data.
-- **Composition**: The generation process is a pipeline of composable functions.
-- **Explicit Error Handling**: `Result` type is used to make failures an
-  explicit part of the function signature, avoiding exceptions for control flow.
-- **Separation of Concerns**: Logic is clearly separated into layers:
-  Data (ADTs), Serialization, AI Models (DSPy), Data Acquisition,
-  Pipeline Steps, Composition, and I/O.
+The architecture is designed to be:
+- **Dynamic & Data-Driven**: The README content is generated based on the
+  current state of the codebase, `pyproject.toml`, and `Makefile`. It adapts
+  as the project evolves without needing manual script updates.
+- **Modular & Composable**: The entire generation process is encapsulated within
+  a `ReadmeGenerator(dspy.Module)`, which composes smaller, specialized DSPy
+  modules for each task (summarization, architecture analysis, etc.).
+- **Intelligent**: It goes beyond simple file concatenation by using LMs to
+  understand the role of each component, analyze the overall architecture,
+  and describe the control flow.
+- **Maintainable**: Concerns are separated into distinct layers: data acquisition
+  (ProjectAnalyzer), AI logic (DSPy Signatures and Modules), and CLI interaction.
 """
 
 from __future__ import annotations
 
 import json
 import sys
-import warnings
-from dataclasses import asdict, dataclass, is_dataclass, replace
-from enum import Enum
-from functools import reduce
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 import dspy
+import toml
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 # --- Setup Project Path ---
-# This allows importing from the `src` directory.
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src"))
-
-from robofactor.function_extraction import FunctionInfo, parse_python_source
-from robofactor.functional_types import Err, Ok, Result
-
-# --- Generic Type Variables for Pipeline ---
-T = TypeVar("T")
-U = TypeVar("U")
-E = TypeVar("E")
-
+# This allows importing from the `src` directory for analysis.
+try:
+    project_root = Path(__file__).parent.parent.resolve()
+    sys.path.insert(0, str(project_root / "src"))
+    from robofactor.function_extraction import FunctionInfo, parse_python_source
+    from robofactor.functional_types import CliResult, Err, Ok, Result
+    from robofactor.main import app as cli_app
+    from robofactor.utils import suppress_pydantic_warnings
+except ImportError as e:
+    print(
+        f"Error: Failed to import project modules. Make sure you run from the project root"
+        f" and have installed dependencies.\nDetails: {e}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # ============================================================================
-# 1. DATA LAYER (ALGEBRAIC DATA TYPES)
+# 1. DATA STRUCTURES (IMMUTABLE ADTs)
 # ============================================================================
 
 
@@ -55,9 +60,7 @@ E = TypeVar("E")
 class FileAnalysis:
     """Immutable representation of a source file's content and structure."""
 
-    path: Path
     relative_path: str
-    content: str
     structure: tuple[FunctionInfo, ...]
 
 
@@ -71,15 +74,15 @@ class FileSummary:
 
 @dataclass(frozen=True)
 class Architecture:
-    """The result of the overall architecture analysis."""
+    """The synthesized understanding of the project's architecture."""
 
     overview: str
-    component_breakdown: tuple[dict[str, str], ...]
+    components: tuple[dict[str, str], ...]
 
 
 @dataclass(frozen=True)
 class UsageGuide:
-    """The result of the usage guide generation."""
+    """Generated installation and usage instructions."""
 
     installation: str
     usage: str
@@ -87,37 +90,141 @@ class UsageGuide:
 
 @dataclass(frozen=True)
 class ProjectContext:
-    """Immutable representation of the entire project's state for generation."""
+    """Immutable snapshot of the entire project's state for generation."""
 
-    root: Path
+    project_name: str
+    project_description: str
     source_analyses: tuple[FileAnalysis, ...]
     config_files: dict[str, str]  # filename -> content
 
-    def get_config(self, filename: str) -> Result[str, str]:
-        """Safely retrieve a configuration file's content."""
-        content = self.config_files.get(filename)
-        return Ok(content) if content is not None else Err(f"Config '{filename}' not found")
+
+# ============================================================================
+# 2. DATA ACQUISITION & STATIC ANALYSIS
+# ============================================================================
 
 
-@dataclass(frozen=True)
-class GenerationState:
-    """
-    State passed through the generation pipeline, accumulating results.
-    This is the "world" object for our functional pipeline, where each step
-    produces a new, updated state.
-    """
+class ProjectAnalyzer:
+    """Handles all file system I/O and static analysis of the project."""
 
-    project_context: ProjectContext
-    console: Console
-    llm_config: dspy.LM
-    # Intermediate results, added by pipeline steps
-    summaries: tuple[FileSummary, ...] = ()
-    architecture: Architecture | None = None
-    usage: UsageGuide | None = None
+    def __init__(self, root: Path, console: Console):
+        """
+        Initializes the analyzer.
+
+        Args:
+            root: The project's root directory.
+            console: A Rich console instance for output.
+        """
+        self.root = root
+        self.console = console
+        self.source_dir = root / "src" / "robofactor"
+
+    def _read_file(self, path: Path) -> str:
+        """Reads a file, raising a FileNotFoundError on failure."""
+        try:
+            return path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self.console.print(f"[bold red]Error: File not found at {path}[/]")
+            raise
+        except Exception as e:
+            self.console.print(f"[bold red]Error: Failed to read {path}: {e}[/]")
+            raise
+
+    def _analyze_source_file(self, path: Path) -> FileAnalysis:
+        """Parses a Python file to extract its structure."""
+        content = self._read_file(path)
+        try:
+            structure = tuple(parse_python_source(content, module_name=path.name))
+            return FileAnalysis(
+                relative_path=str(path.relative_to(self.root)),
+                structure=structure,
+            )
+        except Exception as e:
+            self.console.print(f"[bold red]Error: Failed to parse AST for {path}: {e}[/]")
+            raise
+
+    def get_cli_help_text(self) -> str:
+        """Captures the --help output from the project's Typer CLI."""
+        self.console.print("[dim]Capturing CLI help text...[/dim]")
+        try:
+            from typer.testing import CliRunner
+
+            runner = CliRunner()
+            cli_runner_result = runner.invoke(cli_app, ["--help"], catch_exceptions=False)
+
+            # Convert the runner result into our functional Result type
+            if cli_runner_result.exit_code == 0:
+                result: Result[CliResult, str] = Ok(
+                    CliResult(
+                        stdout=cli_runner_result.stdout,
+                        stderr=cli_runner_result.stderr,
+                        exit_code=cli_runner_result.exit_code,
+                    )
+                )
+            else:
+                result = Err(
+                    f"CLI command failed with exit code {cli_runner_result.exit_code}:\n{cli_runner_result.stderr}"
+                )
+
+            # Now, call the requested method, which will raise on Err
+            result.raise_for_status()
+
+            # If it didn't raise, we can safely access the value.
+            assert isinstance(result, Ok)
+            return result.value.stdout
+
+        except Exception as e:
+            self.console.print(f"[bold red]Error: Failed to get CLI help text: {e}[/]")
+            raise
+
+    def analyze(self) -> tuple[ProjectContext, str]:
+        """
+        Performs a full analysis of the project.
+
+        Returns:
+            A tuple containing the ProjectContext and the CLI help text.
+        """
+        self.console.print(f"[dim]Analyzing project at: {self.root}[/dim]")
+
+        # Analyze source files
+        py_files = [p for p in self.source_dir.glob("*.py") if p.name != "__init__.py"]
+        analyses: list[FileAnalysis] = []
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=self.console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("Analyzing source files...", total=len(py_files))
+            for file_path in py_files:
+                progress.update(task, description=f"Parsing {file_path.name}")
+                analyses.append(self._analyze_source_file(file_path))
+                progress.advance(task)
+
+        # Read config files and project metadata
+        config_files: dict[str, str] = {}
+        required_configs = ("pyproject.toml", "Makefile")
+        for filename in required_configs:
+            config_files[filename] = self._read_file(self.root / filename)
+
+        pyproject_data = toml.loads(config_files["pyproject.toml"])
+        project_name = pyproject_data.get("project", {}).get("name", "Unknown Project")
+        project_desc = pyproject_data.get("project", {}).get(
+            "description", "No description found."
+        )
+
+        context = ProjectContext(
+            project_name=project_name,
+            project_description=project_desc,
+            source_analyses=tuple(analyses),
+            config_files=config_files,
+        )
+
+        cli_help_text = self.get_cli_help_text()
+        return context, cli_help_text
 
 
 # ============================================================================
-# 2. SERIALIZATION LAYER
+# 3. DSPy SIGNATURES (DECLARATIVE AI TASKS)
 # ============================================================================
 
 
@@ -125,24 +232,16 @@ def _custom_json_encoder(obj: Any) -> Any:
     """A custom encoder to handle dataclasses, enums, and paths for JSON."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return asdict(obj)
-    if isinstance(obj, Enum):
-        return obj.value
     if isinstance(obj, Path):
         return str(obj)
+    if hasattr(obj, "value") and not isinstance(obj, type):
+        return obj.value
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 def to_json_string(data: Any) -> str:
-    """
-    Converts a Python object (including dataclasses) to a JSON string.
-    This pure function is essential for passing structured data to the LLM.
-    """
+    """Converts a Python object (including dataclasses) to a JSON string."""
     return json.dumps(data, default=_custom_json_encoder, indent=2)
-
-
-# ============================================================================
-# 3. DSPy LAYER (AI MODEL SIGNATURES)
-# ============================================================================
 
 
 class SummarizeFile(dspy.Signature):
@@ -153,19 +252,20 @@ class SummarizeFile(dspy.Signature):
         desc="A JSON object describing the functions and classes in the file."
     )
     summary: str = dspy.OutputField(
-        desc="A concise, one-paragraph summary of the file's main purpose."
+        desc="A concise, one-paragraph summary of the file's main purpose and role in the project."
     )
 
 
-class AnalyzeArchitecture(dspy.Signature):
-    """Analyze file summaries to describe the project's architecture."""
+class SynthesizeArchitecture(dspy.Signature):
+    """Analyze file summaries to describe the project's architecture and control flow."""
 
+    project_name: str = dspy.InputField(desc="The name of the project.")
     file_summaries: str = dspy.InputField(desc="A JSON array of summaries for all project files.")
-    architecture_overview: str = dspy.OutputField(
-        desc="A high-level paragraph describing the architecture and data flow."
+    overview: str = dspy.OutputField(
+        desc="A high-level paragraph describing the project's purpose, architecture, and the flow of data/control between key components."
     )
-    component_breakdown: list[dict[str, str]] = dspy.OutputField(
-        desc="A list of dicts with 'component' and 'description' keys."
+    components: list[dict[str, str]] = dspy.OutputField(
+        desc="A list of dictionaries, each with 'component' (file path) and 'description' keys, detailing the role of each file."
     )
 
 
@@ -176,315 +276,138 @@ class GenerateUsage(dspy.Signature):
     makefile: str = dspy.InputField(desc="Content of Makefile.")
     cli_help_text: str = dspy.InputField(desc="The --help output from the main CLI.")
     installation_instructions: str = dspy.OutputField(
-        desc="Markdown-formatted installation instructions."
+        desc="Markdown-formatted installation instructions, including `uv` and `make` commands."
     )
     usage_instructions: str = dspy.OutputField(
-        desc="Markdown-formatted usage instructions with examples."
+        desc="Markdown-formatted usage instructions with clear examples based on the CLI help text."
     )
 
 
 class AssembleReadme(dspy.Signature):
-    """Assemble a complete README from all generated sections."""
+    """Assemble a complete, well-structured, and professional README.md from all generated sections."""
 
-    project_name: str = dspy.InputField()
-    project_description: str = dspy.InputField()
-    installation: str = dspy.InputField()
-    usage: str = dspy.InputField()
-    architecture_overview: str = dspy.InputField()
+    project_name: str = dspy.InputField(desc="The name of the project.")
+    project_description: str = dspy.InputField(desc="A one-line description of the project.")
+    installation_guide: str = dspy.InputField(desc="Markdown content for the 'Installation' section.")
+    usage_guide: str = dspy.InputField(desc="Markdown content for the 'Usage' section, including CLI examples.")
+    architecture_overview: str = dspy.InputField(desc="Markdown content for the 'Architecture' section overview.")
     component_breakdown: str = dspy.InputField(
-        desc="A markdown-formatted list of system components."
+        desc="A markdown-formatted list of system components and their descriptions."
     )
-    readme_content: str = dspy.OutputField(desc="The complete, final README.md content.")
+    readme_content: str = dspy.OutputField(
+        desc="The complete, final README.md content. It must include a table of contents, all the provided sections, and be formatted professionally."
+    )
 
 
 # ============================================================================
-# 4. DATA ACQUISITION LAYER
+# 4. DSPy README GENERATOR MODULE
 # ============================================================================
 
 
-def read_file(path: Path) -> Result[str, str]:
-    """Pure-functional file reading. Wraps I/O in a Result type."""
-    try:
-        return Ok(path.read_text(encoding="utf-8"))
-    except Exception as e:
-        return Err(f"Failed to read {path}: {e}")
+class ReadmeGenerator(dspy.Module):
+    """A DSPy module that orchestrates the entire README generation process."""
 
+    def __init__(self):
+        """Initializes the sub-modules for each step of the generation pipeline."""
+        super().__init__()
+        self.summarizer = dspy.Predict(SummarizeFile, max_tokens=4000)
+        self.architect = dspy.ChainOfThought(SynthesizeArchitecture, max_tokens=4000)
+        self.usage_writer = dspy.ChainOfThought(GenerateUsage, max_tokens=4000)
+        self.assembler = dspy.ChainOfThought(AssembleReadme, max_tokens=8000)
 
-def analyze_source_file(path: Path, root: Path) -> Result[FileAnalysis, str]:
-    """Reads and parses a single Python file into a FileAnalysis ADT."""
-    content_result = read_file(path)
-    if isinstance(content_result, Err):
-        return content_result
-    content = content_result.value
+    def forward(
+        self, project_context: ProjectContext, cli_help_text: str
+    ) -> dspy.Prediction:
+        """
+        Executes the README generation pipeline.
 
-    try:
-        structure = tuple(parse_python_source(content, module_name=path.name))
-        return Ok(
-            FileAnalysis(
-                path=path,
-                relative_path=str(path.relative_to(root)),
-                content=content,
-                structure=structure,
-            )
-        )
-    except Exception as e:
-        return Err(f"Failed to parse {path}: {e}")
+        Args:
+            project_context: The analyzed state of the project.
+            cli_help_text: The captured --help output from the CLI.
 
-
-def create_project_context(root: Path) -> Result[ProjectContext, str]:
-    """
-    Builds the complete, immutable project context by reading and analyzing
-    all necessary files from disk. This is the primary I/O-bound operation.
-    """
-    source_dir = root / "src" / "robofactor"
-    py_files = [p for p in source_dir.glob("*.py") if p.name != "__init__.py"]
-
-    analyses: list[FileAnalysis] = []
-    for file_path in py_files:
-        analysis_result = analyze_source_file(file_path, root)
-        if isinstance(analysis_result, Err):
-            return analysis_result
-        analyses.append(analysis_result.value)
-
-    config_files: dict[str, str] = {}
-    required_configs = ("pyproject.toml", "Makefile")
-    for filename in required_configs:
-        content_result = read_file(root / filename)
-        if isinstance(content_result, Err):
-            return content_result
-        config_files[filename] = content_result.value
-
-    return Ok(ProjectContext(root=root, source_analyses=tuple(analyses), config_files=config_files))
-
-
-# ============================================================================
-# 5. LOGIC LAYER (PIPELINE STEPS)
-# ============================================================================
-
-# Each function in this layer represents one major step in the generation process.
-# They are pure functions that take the current state and return a new state
-# wrapped in a Result, making them perfect for pipeline composition.
-
-
-def step_summarize_files(state: GenerationState) -> Result[GenerationState, str]:
-    """Pipeline step to summarize each source file using an LLM."""
-    summarizer = dspy.Predict(SummarizeFile)
-    summaries: list[FileSummary] = []
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=state.console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task(
-            "Summarizing source files...", total=len(state.project_context.source_analyses)
-        )
-        for analysis in state.project_context.source_analyses:
-            progress.update(task, advance=1, description=f"Summarizing {analysis.relative_path}")
-            try:
-                prediction = summarizer(
+        Returns:
+            A dspy.Prediction object containing the final readme_content and
+            intermediate artifacts for inspection.
+        """
+        # 1. Summarize each source file
+        file_summaries = [
+            FileSummary(
+                file_path=analysis.relative_path,
+                summary=self.summarizer(
                     file_path=analysis.relative_path,
                     file_structure=to_json_string(analysis.structure),
-                )
-                summaries.append(
-                    FileSummary(file_path=analysis.relative_path, summary=prediction.summary)
-                )
-            except Exception as e:
-                return Err(f"LLM failed to summarize {analysis.relative_path}: {e}")
+                ).summary,
+            )
+            for analysis in project_context.source_analyses
+        ]
 
-    # Create a new state with the summaries added by using `replace`.
-    return Ok(replace(state, summaries=tuple(summaries)))
-
-
-def step_analyze_architecture(state: GenerationState) -> Result[GenerationState, str]:
-    """Pipeline step to analyze the overall project architecture."""
-    state.console.print("Analyzing project architecture...")
-    architect = dspy.Predict(AnalyzeArchitecture)
-    try:
-        prediction = architect(file_summaries=to_json_string(state.summaries))
-        architecture = Architecture(
-            overview=prediction.architecture_overview,
-            component_breakdown=tuple(prediction.component_breakdown),
+        # 2. Synthesize the overall architecture
+        arch_prediction = self.architect(
+            project_name=project_context.project_name,
+            file_summaries=to_json_string(file_summaries),
         )
-        return Ok(replace(state, architecture=architecture))
-    except Exception as e:
-        return Err(f"LLM failed to analyze architecture: {e}")
+        architecture = Architecture(
+            overview=arch_prediction.overview,
+            components=tuple(arch_prediction.components),
+        )
 
-
-def step_generate_usage(state: GenerationState) -> Result[GenerationState, str]:
-    """Pipeline step to generate the installation and usage guide."""
-    state.console.print("Generating usage guide...")
-    # This step requires getting help text from the CLI. This impurity is
-    # contained here. A 100% pure approach would require mocking, which
-    # is overkill for this script.
-    try:
-        from robofactor.main import app as cli_app
-        from typer.testing import CliRunner
-
-        runner = CliRunner()
-        help_result = runner.invoke(cli_app, ["--help"])
-        cli_help_text = help_result.stdout
-    except Exception as e:
-        return Err(f"Failed to get CLI help text: {e}")
-
-    pyproject_res = state.project_context.get_config("pyproject.toml")
-    makefile_res = state.project_context.get_config("Makefile")
-    if isinstance(pyproject_res, Err):
-        return pyproject_res
-    if isinstance(makefile_res, Err):
-        return makefile_res
-
-    usage_generator = dspy.Predict(GenerateUsage)
-    try:
-        prediction = usage_generator(
-            pyproject_toml=pyproject_res.value,
-            makefile=makefile_res.value,
+        # 3. Generate the usage guide
+        usage_prediction = self.usage_writer(
+            pyproject_toml=project_context.config_files["pyproject.toml"],
+            makefile=project_context.config_files["Makefile"],
             cli_help_text=cli_help_text,
         )
         usage = UsageGuide(
-            installation=prediction.installation_instructions, usage=prediction.usage_instructions
+            installation=usage_prediction.installation_instructions,
+            usage=usage_prediction.usage_instructions,
         )
-        return Ok(replace(state, usage=usage))
-    except Exception as e:
-        return Err(f"LLM failed to generate usage guide: {e}")
 
+        # 4. Assemble the final README
+        component_markdown = "\n".join(
+            f"- `{comp['component']}`: {comp['description']}"
+            for comp in architecture.components
+        )
 
-def step_assemble_readme(state: GenerationState) -> Result[str, str]:
-    """Final pipeline step to assemble the complete README.md content."""
-    state.console.print("Assembling final README...")
-    if not state.architecture or not state.usage:
-        return Err("Architecture or Usage data is missing for final assembly.")
-
-    component_markdown = "\n".join(
-        f"- `{comp['component']}`: {comp['description']}"
-        for comp in state.architecture.component_breakdown
-    )
-
-    assembler = dspy.Predict(AssembleReadme)
-    try:
-        # These are hardcoded for this specific project.
-        # A more generic script could pull them from the GenerationState.
-        prediction = assembler(
-            project_name="robofactor",
-            project_description="The robot who refactors: /[^_^]\\" ,
-            installation=state.usage.installation,
-            usage=state.usage.usage,
-            architecture_overview=state.architecture.overview,
+        final_prediction = self.assembler(
+            project_name=project_context.project_name,
+            project_description=project_context.project_description,
+            installation_guide=usage.installation,
+            usage_guide=usage.usage,
+            architecture_overview=architecture.overview,
             component_breakdown=component_markdown,
         )
-        return Ok(prediction.readme_content)
-    except Exception as e:
-        return Err(f"LLM failed to assemble README: {e}")
+
+        # Return a structured prediction with all artifacts
+        return dspy.Prediction(
+            summaries=file_summaries,
+            architecture=architecture,
+            usage=usage,
+            readme_content=final_prediction.readme_content,
+        )
 
 
 # ============================================================================
-# 6. COMPOSITION LAYER
+# 5. CLI & MAIN EXECUTION
 # ============================================================================
 
-
-def pipeline_reducer(
-    state_result: Result[GenerationState, str],
-    step_func: Callable[[GenerationState], Result[GenerationState, str]],
-) -> Result[GenerationState, str]:
-    """
-    A reducer for `functools.reduce` that chains pipeline steps together.
-    It stops the pipeline on the first `Err` result, implementing a
-    railway-oriented programming pattern.
-    """
-    if isinstance(state_result, Err):
-        return state_result
-    return step_func(state_result.value)
-
-
-def run_generation_pipeline(state: GenerationState) -> Result[str, str]:
-    """
-    Executes the full README generation pipeline by composing the steps.
-    """
-    pipeline_steps: list[Callable[[GenerationState], Result[GenerationState, str]]] = [
-        step_summarize_files,
-        step_analyze_architecture,
-        step_generate_usage,
-    ]
-
-    # The pipeline builds up the GenerationState through reduction.
-    final_state_result = reduce(pipeline_reducer, pipeline_steps, Ok(state))
-
-    # The final step consumes the state to produce the final string.
-    if isinstance(final_state_result, Err):
-        return final_state_result
-
-    return step_assemble_readme(final_state_result.value)
-
-
-# ============================================================================
-# 7. I/O & CLI LAYER
-# ============================================================================
-
-
-def write_file(path: Path, content: str) -> Result[None, str]:
-    """Pure-functional file writing."""
-    try:
-        path.write_text(content, encoding="utf-8")
-        return Ok(None)
-    except Exception as e:
-        return Err(f"Failed to write to {path}: {e}")
-
-
-def configure_dspy(model_name: str) -> Result[dspy.LM, str]:
-    """Configures the DSPy framework with the specified language model."""
-    try:
-        llm = dspy.LM(model_name, max_tokens=64000)
-        dspy.configure(lm=llm)
-        return Ok(llm)
-    except Exception as e:
-        return Err(f"Failed to configure DSPy with model '{model_name}': {e}")
-
-
-def main_flow(
-    root: Path, output_path: Path, model_name: str, console: Console
-) -> Result[None, str]:
-    """
-    The main workflow orchestrator.
-    This function composes all operations, from configuration and data
-    acquisition to pipeline execution and final file output.
-    """
-    warnings.filterwarnings(
-        "ignore",
-        category=UserWarning,
-        message=".*Pydantic serializer warnings.*",
-    )
-    console.print(f"[dim]1. Configuring LLM: {model_name}...[/dim]")
-    llm_result = configure_dspy(model_name)
-    if isinstance(llm_result, Err):
-        return llm_result
-
-    console.print("[dim]2. Analyzing project structure...[/dim]")
-    project_context_result = create_project_context(root)
-    if isinstance(project_context_result, Err):
-        return project_context_result
-
-    initial_state = GenerationState(
-        project_context=project_context_result.value,
-        console=console,
-        llm_config=llm_result.value,
-    )
-
-    console.print("[dim]3. Starting README generation pipeline...[/dim]")
-    readme_content_result = run_generation_pipeline(initial_state)
-    if isinstance(readme_content_result, Err):
-        return readme_content_result
-
-    console.print(f"[dim]4. Writing output to {output_path}...[/dim]")
-    return write_file(output_path, readme_content_result.value)
-
-
-# --- Typer CLI Application ---
 app = typer.Typer(
-    help="A purely functional README generator for the robofactor project.",
+    help="An intelligent, context-aware README generator for the robofactor project.",
     add_completion=False,
     no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
 )
+
+
+def configure_dspy(model_name: str, console: Console) -> None:
+    """Configures the DSPy framework with the specified language model."""
+    console.print(f"[dim]Configuring LLM: [bold]{model_name}[/bold]...[/dim]")
+    try:
+        # Use a larger model for generation tasks.
+        llm = dspy.LM(model_name)
+        dspy.configure(lm=llm)
+    except Exception as e:
+        console.print(f"[bold red]Error: Failed to configure DSPy with model '{model_name}': {e}[/]")
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -495,6 +418,7 @@ def generate(
         "-o",
         help="Path to write the generated README.md file.",
         show_default=True,
+        writable=True,
     ),
     model: str = typer.Option(
         "gemini/gemini-2.5-pro",
@@ -507,22 +431,39 @@ def generate(
     """
     Analyzes the project and generates a comprehensive README.md.
     """
+    suppress_pydantic_warnings()
     console = Console()
     console.print("\n[bold cyan]═══ Robofactor README Generator ═══[/bold cyan]\n")
 
-    # Execute the main flow and handle the final result.
-    # This is the edge of the application where side-effects (printing to
-    # the console, exiting) are handled based on the pure core's output.
-    result = main_flow(project_root, output, model, console)
+    try:
+        # 1. Configure AI model
+        configure_dspy(model, console)
 
-    match result:
-        case Ok(_):
-            console.print(
-                f"\n[bold green]✅ README successfully generated at: {output}[/bold green]"
+        # 2. Analyze project context
+        analyzer = ProjectAnalyzer(project_root, console)
+        project_context, cli_help_text = analyzer.analyze()
+
+        # 3. Instantiate and run the generator module
+        console.print("[bold blue]Starting README generation pipeline...[/bold blue]")
+        readme_generator = ReadmeGenerator()
+        with console.status("[bold green]Synthesizing README with DSPy...[/]", spinner="dots"):
+            prediction = readme_generator(
+                project_context=project_context, cli_help_text=cli_help_text
             )
-        case Err(error):
-            console.print(f"\n[bold red]❌ Generation failed:[/bold red]\n{error}")
-            raise typer.Exit(code=1)
+        console.print("[green]✓ Generation pipeline complete.[/green]")
+
+        # 4. Write the output file
+        console.print(f"[dim]Writing output to [bold]{output}[/bold]...[/dim]")
+        output.write_text(prediction.readme_content, encoding="utf-8")
+
+    except Exception as e:
+        # Catch any exceptions raised during the process
+        console.print(f"\n[bold red]❌ An unexpected error occurred:[/bold red]\n{e}")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"\n[bold green]✅ README successfully generated at: {output}[/bold green]"
+    )
 
 
 if __name__ == "__main__":

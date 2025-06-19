@@ -26,10 +26,23 @@ E = TypeVar("E")
 
 
 @dataclass(frozen=True, slots=True)
+class CliResult:
+    """Represents the successful result of a CLI command."""
+
+    stdout: str
+    stderr: str
+    exit_code: int
+
+
+@dataclass(frozen=True, slots=True)
 class Ok(Generic[T]):
     """Represents a successful outcome containing a value."""
 
     value: T
+
+    def raise_for_status(self) -> None:
+        """Does nothing for a successful result."""
+        pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +50,10 @@ class Err(Generic[E]):
     """Represents a failure outcome containing an error."""
 
     error: E
+
+    def raise_for_status(self) -> None:
+        """Raises a RuntimeError for a failure result."""
+        raise RuntimeError(str(self.error))
 
 
 # The Result type is a union of Ok and Err, representing either success or failure.
