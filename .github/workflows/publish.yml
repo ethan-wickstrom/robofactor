@@ -51,8 +51,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        # Use the version recommended by the official setup-uv documentation.
-        uses: astral-sh/setup-uv@v1
+        uses: astral-sh/setup-uv@v6
 
       - name: Build package
         run: uv build
