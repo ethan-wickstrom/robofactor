@@ -1,17 +1,16 @@
-# This workflow will build and publish the Python package to PyPI when a push
-# to the main branch occurs. It uses PyPI's trusted publishing feature for
+# This workflow will build and publish the Python package to PyPI when a release
+# is published. It uses PyPI's trusted publishing feature for
 # secure, passwordless deployment.
 #
 # For more information, see:
 # - https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
 # - https://github.com/pypa/gh-action-pypi-publish
 
-name: Publish Python Package to PyPI
+name: Publish Python Package to PyPI on Release
 
 on:
-  push:
-    branches:
-      - main
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -23,6 +22,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Fetch all history for all branches and tags for version extraction
+          fetch-depth: 0
+
+      - name: Validate version tag
+        run: |
+          if [[ ! "${{ github.ref }}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Tag must be in format v*.*.* (e.g., v1.2.3)"
+            exit 1
+          fi
+
+      - name: Extract version from tag
+        id: extract_version
+        uses: damienaicheh/extract-version-from-tag-action@v1.3.0
+
+      - name: Update pyproject.toml version
+        run: |
+          VERSION="${{ steps.extract_version.outputs.version }}"
+          echo "Updating pyproject.toml to version ${VERSION}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
+          echo "Verifying pyproject.toml:"
+          grep "version =" pyproject.toml
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,7 +52,7 @@ jobs:
 
       - name: Install uv
         # Use the version recommended by the official setup-uv documentation.
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v1
 
       - name: Build package
         run: uv build
@@ -46,6 +67,7 @@ jobs:
 
   pypi-publish:
     name: Upload release to PyPI
+    if: github.event_name == 'release' && github.event.action == 'published'
     # This job depends on the build job completing successfully.
     needs: build
     runs-on: ubuntu-latest
