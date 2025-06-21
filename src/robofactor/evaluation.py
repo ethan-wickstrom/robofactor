@@ -3,6 +3,8 @@ Data models and core logic for evaluating refactored code.
 
 This module defines the structures for test cases, quality scores, and
 evaluation results, and contains the pure function for performing the evaluation.
+It leverages the 'returns' library for robust, type-safe error handling using
+a railway-oriented programming approach.
 """
 
 from __future__ import annotations
@@ -10,9 +12,9 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from pydantic import BaseModel, Field
+from returns.result import Failure, Result, Success, safe
 
 from . import analysis
-from .functional_types import Err, Ok, Result
 
 
 class TestCase(BaseModel):
@@ -50,34 +52,44 @@ class EvaluationResult(NamedTuple):
 
 
 def _check_syntax(code: str) -> Result[str, str]:
-    """Checks for valid Python syntax and returns the function name if valid."""
+    """
+    Checks for valid Python syntax and returns the function name if valid.
+
+    This function wraps the analysis function to convert its tuple-based
+    output into a `Result` monad, which is more suitable for functional
+    pipelines.
+    """
     is_valid, func_name, err = analysis.check_syntax(code)
     if not is_valid or not func_name:
-        return Err(f"Syntax Check Failed: {err or 'No function found.'}")
-    return Ok(func_name)
+        return Failure(f"Syntax Check Failed: {err or 'No function found.'}")
+    return Success(func_name)
 
 
-def _check_quality(code: str, func_name: str) -> Result[CodeQualityScores, str]:
-    """Checks code quality and returns the scores if successful."""
-    try:
-        quality = analysis.check_code_quality(code, func_name)
-        return Ok(quality)
-    except Exception as e:
-        return Err(f"Quality Check Failed: {e}")
+@safe
+def _check_quality(code: str, func_name: str) -> CodeQualityScores:
+    """
+    Checks code quality and returns the scores.
+
+    The `@safe` decorator automatically wraps this function's execution in a
+    `Result` container, capturing any exceptions as a `Failure`.
+    """
+    return analysis.check_code_quality(code, func_name)
 
 
+@safe
 def _check_functional_correctness(
     code: str, func_name: str, tests: list[TestCase]
-) -> Result[FunctionalCheckResult, str]:
-    """Runs functional tests and returns the pass rate if successful."""
-    if not tests:
-        return Ok(FunctionalCheckResult(passed_tests=0, total_tests=0))
+) -> FunctionalCheckResult:
+    """
+    Runs functional tests and returns the pass rate.
 
-    try:
-        passed_tests = analysis.check_functional_correctness(code, func_name, tests)
-        return Ok(FunctionalCheckResult(passed_tests, len(tests)))
-    except Exception as e:
-        return Err(f"Functional Check Failed: {e}")
+    The `@safe` decorator captures any exceptions during test execution.
+    """
+    if not tests:
+        return FunctionalCheckResult(passed_tests=0, total_tests=0)
+
+    passed_tests = analysis.check_functional_correctness(code, func_name, tests)
+    return FunctionalCheckResult(passed_tests=passed_tests, total_tests=len(tests))
 
 
 def evaluate_refactored_code(
@@ -87,35 +99,32 @@ def evaluate_refactored_code(
     Performs a full evaluation of the refactored code.
 
     This function orchestrates a pipeline of checks (syntax, quality, functional)
-    and returns a comprehensive result. It uses a functional, railway-oriented
-    approach with the `Result` type to handle potential failures at each stage.
+    using a declarative, railway-oriented approach with `returns`'s `.bind()`
+    method. If any step fails, the entire pipeline short-circuits and returns
+    the error.
 
     Args:
         code: The refactored Python code to evaluate.
         tests: A list of test cases to verify functional correctness.
 
     Returns:
-        - Ok(EvaluationResult) if all checks pass.
-        - Err(str) with a descriptive error message if any check fails.
+        A `Result` container:
+        - `Success(EvaluationResult)` if all checks pass.
+        - `Failure(str)` with a descriptive error message if any check fails.
     """
-    syntax_result = _check_syntax(code)
-    if isinstance(syntax_result, Err):
-        return syntax_result
-    func_name = syntax_result.value
-
-    quality_result = _check_quality(code, func_name)
-    if isinstance(quality_result, Err):
-        return quality_result
-
-    functional_result = _check_functional_correctness(code, func_name, tests)
-    if isinstance(functional_result, Err):
-        return functional_result
-
-    return Ok(
-        EvaluationResult(
-            code=code,
-            func_name=func_name,
-            quality_scores=quality_result.value,
-            functional_check=functional_result.value,
+    return _check_syntax(code).bind(
+        lambda func_name: _check_quality(code, func_name)
+        .alt(lambda e: f"Quality Check Failed: {e}")
+        .bind(
+            lambda quality_scores: _check_functional_correctness(code, func_name, tests)
+            .alt(lambda e: f"Functional Check Failed: {e}")
+            .map(
+                lambda functional_check: EvaluationResult(
+                    code=code,
+                    func_name=func_name,
+                    quality_scores=quality_scores,
+                    functional_check=functional_check,
+                )
+            )
         )
     )

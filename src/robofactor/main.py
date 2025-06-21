@@ -7,16 +7,16 @@ from typing import Annotated
 import dspy
 import mlflow
 import typer
+from returns.result import Failure, Success
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
 
 from . import config, ui, utils
-from .analysis import _extract_python_code
-from .dspy_modules import CodeRefactor, RefactoringEvaluator, get_training_data
+from .analysis import extract_python_code
+from .dspy_modules import CodeRefactor, RefactoringEvaluator, load_training_data
 from .evaluation import TestCase, evaluate_refactored_code
-from .functional_types import Err, Ok
 
 app = typer.Typer()
 
@@ -57,7 +57,7 @@ def _load_or_compile_model(
             num_threads=8,
         )
         teleprompter.compile(
-            refactorer, trainset=get_training_data(), requires_permission_to_run=False
+            refactorer, trainset=load_training_data(), requires_permission_to_run=False
         )
         console.print(f"Optimization complete. Saving to {optimizer_path}...")
         self_correcting_refactorer.save(str(optimizer_path), save_program=True)
@@ -90,14 +90,14 @@ def _run_refactoring_on_file(
     prediction = refactorer(**refactor_example.inputs())
     ui.display_refactoring_process(console, prediction)
 
-    refactored_code = _extract_python_code(prediction.refactored_code)
+    refactored_code = extract_python_code(prediction.refactored_code)
     raw_tests = refactor_example.get("test_cases", [])
     tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
 
     evaluation = evaluate_refactored_code(refactored_code, tests)
 
     match evaluation:
-        case Ok(eval_data):
+        case Success(eval_data):
             ui.display_evaluation_results(console, eval_data)
             if write:
                 console.print(
@@ -105,7 +105,7 @@ def _run_refactoring_on_file(
                 )
                 script_path.write_text(refactored_code, encoding="utf-8")
                 console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
-        case Err(error_message):
+        case Failure(error_message):
             console.print(
                 Panel(
                     f"[bold red]Evaluation Failed:[/bold red]\n{error_message}",

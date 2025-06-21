@@ -4,6 +4,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from returns.io import impure_safe
+from returns.result import safe
+
 # Type alias for function definition AST nodes to improve readability.
 FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -121,7 +124,7 @@ class FunctionInfo:
     line_end: int
     column_start: int
     column_end: int
-    parameters: tuple[Parameter, ...] 
+    parameters: tuple[Parameter, ...]
     decorators: tuple[Decorator, ...]
     is_async: bool
     context: FunctionContext
@@ -283,7 +286,7 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
     if args.vararg:
         yield Parameter(
             name=args.vararg.arg,
-            annotation=( 
+            annotation=(
                 ast_node_to_source(args.vararg.annotation) if args.vararg.annotation else None
             ),
             kind=ParameterKind.VAR_POSITIONAL,
@@ -297,7 +300,7 @@ def extract_parameters(func_node: FunctionDefNode) -> Iterator[Parameter]:
     if args.kwarg:
         yield Parameter(
             name=args.kwarg.arg,
-            annotation=( 
+            annotation=(
                 ast_node_to_source(args.kwarg.annotation) if args.kwarg.annotation else None
             ),
             kind=ParameterKind.VAR_KEYWORD,
@@ -387,62 +390,45 @@ def _parse_ast_and_find_functions(tree: ast.Module, module_name: str) -> Iterato
     yield from visitor.visit(tree, module_context)
 
 
+@impure_safe
 def parse_python_file(file_path: Path) -> Iterator[FunctionInfo]:
     """
     Parse a Python file and stream all function definitions.
+
+    This function is decorated with `@impure_safe` to handle `IO` and parsing
+    errors (e.g., `FileNotFoundError`, `SyntaxError`), returning an `IOResult`.
 
     Args:
         file_path: The path to the Python file.
 
     Yields:
-        FunctionInfo objects for all functions in the file.
+        An iterator of `FunctionInfo` objects for all functions in the file.
+        The yielding process is wrapped in an `IOResult` container.
     """
-    try:
-        with open(file_path, encoding="utf-8") as f:
-            source_code = f.read()
-        tree = ast.parse(source_code, filename=str(file_path))
-        yield from _parse_ast_and_find_functions(tree, file_path.stem)
-    except FileNotFoundError:
-        # Handle cases where the file does not exist.
-        print(f"Error: File not found at {file_path}")
-        # Optionally re-raise or return an empty iterator.
-        return
-    except SyntaxError as e:
-        # Handle cases where the file contains invalid Python syntax.
-        print(f"Error: Invalid Python syntax in {file_path}: {e}")
-        # Optionally re-raise or return an empty iterator.
-        return
-    except Exception as e:
-        # Catch any other unexpected errors during file processing.
-        print(f"An unexpected error occurred while processing {file_path}: {e}")
-        # Optionally re-raise or return an empty iterator.
-        return
+    with open(file_path, encoding="utf-8") as f:
+        source_code = f.read()
+    tree = ast.parse(source_code, filename=str(file_path))
+    yield from _parse_ast_and_find_functions(tree, file_path.stem)
 
 
+@safe
 def parse_python_source(source_code: str, module_name: str = "<string>") -> Iterator[FunctionInfo]:
     """
     Parse a Python source string and stream all function definitions.
+
+    This function is decorated with `@safe` to handle `SyntaxError`,
+    returning a `Result` container.
 
     Args:
         source_code: The Python code to parse.
         module_name: The name to associate with the module.
 
     Yields:
-        FunctionInfo objects for all functions in the code.
+        An iterator of `FunctionInfo` objects for all functions in the code.
+        The yielding process is wrapped in a `Result` container.
     """
-    try:
-        tree = ast.parse(source_code, filename=module_name)
-        yield from _parse_ast_and_find_functions(tree, module_name)
-    except SyntaxError as e:
-        # Handle cases where the source code contains invalid Python syntax.
-        print(f"Error: Invalid Python syntax in provided source: {e}")
-        # Optionally re-raise or return an empty iterator.
-        return
-    except Exception as e:
-        # Catch any other unexpected errors during source code parsing.
-        print(f"An unexpected error occurred while parsing source: {e}")
-        # Optionally re-raise or return an empty iterator.
-        return
+    tree = ast.parse(source_code, filename=module_name)
+    yield from _parse_ast_and_find_functions(tree, module_name)
 
 
 def filter_by_context(
@@ -476,11 +462,7 @@ def filter_by_decorator(
     Yields:
         The functions that have the specified decorator.
     """
-    yield from (
-        f
-        for f in functions
-        if any(d.name == decorator_name for d in f.decorators)
-    )
+    yield from (f for f in functions if any(d.name == decorator_name for d in f.decorators))
 
 
 def get_function_names(functions: Iterator[FunctionInfo]) -> Iterator[str]:

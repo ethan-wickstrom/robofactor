@@ -1,119 +1,97 @@
 """
-DSPy modules, Pydantic models, and data loading for the refactoring agent.
+Refactored DSPy modules and Pydantic models for Python code refactoring agent.
+Improved with type safety, error handling, and separation of concerns.
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Any, List, Optional
 
 import dspy
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from returns.result import Result, Success
 
 from . import analysis, evaluation
-from .evaluation import TestCase
-from .functional_types import Err, Ok
+from .evaluation import EvaluationResult, TestCase
 
+# --- Constants ---
+FAILURE_SCORE = 0.0
+TRAINING_DATA_FILE = "training_data.json"
+logger = logging.getLogger(__name__)
 
-# --- Pydantic Models for Structured Outputs ---
-
-
+# --- Pydantic Models ---
 class AnalysisOutput(BaseModel):
-    """A structured analysis of a Python code snippet."""
-
-    analysis: str = Field(
-        description="A concise summary of the code's functionality, complexity, and dependencies."
+    """Structured analysis of Python code functionality and improvement opportunities."""
+    analysis: str = Field(description="Concise summary of functionality, complexity, and dependencies")
+    refactoring_opportunities: list[str] = Field(
+        description="Actionable bullet points for refactoring"
     )
-    refactoring_opportunities: List[str] = Field(
-        description="A bulleted list of specific, actionable refactoring opportunities."
-    )
-
 
 class PlanOutput(BaseModel):
-    """A step-by-step plan to refactor Python code."""
-
-    refactoring_summary: str = Field(description="A high-level summary of the refactoring goal.")
-    plan_steps: List[str] = Field(
-        description="A detailed, step-by-step list of actions to refactor the code."
-    )
-
+    """Step-by-step refactoring execution plan."""
+    refactoring_summary: str = Field(description="High-level refactoring objective")
+    plan_steps: list[str] = Field(description="Sequential actions to achieve refactoring")
 
 class ImplementationOutput(BaseModel):
-    """The final, refactored code and an explanation of the changes."""
-
+    """Final refactored code with change explanations."""
     refactored_code: str = Field(
-        description="The final, PEP8-compliant, refactored Python code block with type hints and docstrings.",
+        description="PEP8-compliant Python code with type hints and docstrings"
     )
     implementation_explanation: str = Field(
-        description="A brief explanation of how the plan was implemented."
+        description="Rationale for implemented changes"
     )
 
     @field_validator("refactored_code")
     @classmethod
     def extract_from_markdown(cls, v: str) -> str:
-        """Ensures the output is raw Python code, stripping markdown fences."""
-        return analysis._extract_python_code(v)
-
+        return analysis.extract_python_code(v)
 
 class EvaluationOutput(BaseModel):
-    """A final, holistic evaluation of the refactored code."""
-
+    """Holistic assessment of refactoring quality."""
     final_score: float = Field(
-        description="A final, holistic score from 0.0 to 1.0, weighting functional correctness most heavily.",
+        description="Weighted quality score (0.0-1.0)",
         ge=0.0,
-        le=1.0,
+        le=1.0
     )
     final_suggestion: str = Field(
-        description="A final suggestion for improvement or a confirmation of readiness."
+        description="Improvement recommendations or approval"
     )
 
+    @model_validator(mode="after")
+    def validate_score_precision(self) -> "EvaluationOutput":
+        if isinstance(self.final_score, float):
+            self.final_score = round(self.final_score, 2)
+        return self
 
-# --- DSPy Signatures with Nested Pydantic Models ---
-
-
+# --- DSPy Signatures ---
 class CodeAnalysis(dspy.Signature):
-    """Analyze Python code for its purpose, complexity, and areas for improvement."""
-
-    code_snippet: str = dspy.InputField(desc="The Python code to be analyzed.")
+    """Analyze Python code for functionality and improvement areas."""
+    code_snippet: str = dspy.InputField(desc="Python code to analyze")
     analysis: AnalysisOutput = dspy.OutputField()
 
-
 class RefactoringPlan(dspy.Signature):
-    """Create a step-by-step plan to refactor Python code based on an analysis."""
-
-    code_snippet: str = dspy.InputField(desc="The original Python code snippet.")
-    analysis: str = dspy.InputField(desc="The analysis of the code snippet.")
+    """Create refactoring plan based on code analysis."""
+    code_snippet: str = dspy.InputField(desc="Original Python code")
+    analysis: str = dspy.InputField(desc="Code analysis summary")
     plan: PlanOutput = dspy.OutputField()
 
-
 class RefactoredCode(dspy.Signature):
-    """Generate refactored Python code based on a plan."""
-
-    original_code: str = dspy.InputField(desc="The original, un-refactored Python code.")
-    refactoring_summary: str = dspy.InputField(desc="The high-level goal of the refactoring.")
-    plan_steps: List[str] = dspy.InputField(desc="The step-by-step plan to apply.")
+    """Generate refactored code from execution plan."""
+    original_code: str = dspy.InputField(desc="Unmodified source code")
+    refactoring_summary: str = dspy.InputField(desc="Refactoring objective")
+    plan_steps: list[str] = dspy.InputField(desc="Step-by-step refactoring actions")
     implementation: ImplementationOutput = dspy.OutputField()
 
-
 class FinalEvaluation(dspy.Signature):
-    """Evaluate the refactored code based on quantitative scores and provide a final assessment."""
-
-    code_snippet: str = dspy.InputField(desc="The refactored code being evaluated.")
-    quality_scores: str = dspy.InputField(
-        desc="A JSON object of quantitative scores (linting, complexity, typing, docstrings)."
-    )
-    functional_score: float = dspy.InputField(
-        desc="A score from 0.0 to 1.0 indicating test pass rate."
-    )
+    """Assess refactored code quality with quantitative metrics."""
+    code_snippet: str = dspy.InputField(desc="Refactored Python code")
+    quality_scores: str = dspy.InputField(desc="JSON quality metrics")
+    functional_score: float = dspy.InputField(desc="Test pass rate (0.0-1.0)")
     evaluation: EvaluationOutput = dspy.OutputField()
 
-
 # --- DSPy Modules ---
-
-
 class CodeRefactor(dspy.Module):
-    """A module that analyzes, plans, and refactors Python code."""
-
+    """Orchestrates code analysis, planning, and refactoring."""
     def __init__(self):
         super().__init__()
         self.analyzer = dspy.Predict(CodeAnalysis)
@@ -121,10 +99,10 @@ class CodeRefactor(dspy.Module):
         self.implementer = dspy.Predict(RefactoredCode)
 
     def forward(self, code_snippet: str) -> dspy.Prediction:
-        """Orchestrates the analysis, planning, and implementation steps."""
         analysis_result = self.analyzer(code_snippet=code_snippet)
         plan_result = self.planner(
-            code_snippet=code_snippet, analysis=analysis_result.analysis.analysis
+            code_snippet=code_snippet,
+            analysis=analysis_result.analysis.analysis
         )
         impl_result = self.implementer(
             original_code=code_snippet,
@@ -141,116 +119,79 @@ class CodeRefactor(dspy.Module):
             implementation_explanation=impl_result.implementation.implementation_explanation,
         )
 
-
 class RefactoringEvaluator(dspy.Module):
-    """
-    A module to evaluate refactored code using a pipeline of programmatic checks
-    and a final LLM judgment.
-    """
-
+    """Evaluates refactored code through automated checks and LLM assessment."""
     def __init__(self):
         super().__init__()
         self.evaluator = dspy.Predict(FinalEvaluation)
 
-    def forward(
-        self, original_example: dspy.Example, prediction: dspy.Prediction, trace: Optional[Any] = None
+    def _handle_evaluation_success(
+        self,
+        eval_data: EvaluationResult,
+        refactored_code: str
     ) -> float:
-        """
-        Evaluates the refactored code through a robust, multi-stage pipeline.
-
-        This method performs the following steps:
-        1. Safely extracts the refactored code and test cases from the inputs.
-        2. Executes programmatic checks (linting, complexity, functional tests).
-        3. If programmatic checks pass, it uses an LLM to provide a final, holistic score.
-
-        Returns 0.0 on any failure to signal the optimizer, otherwise returns the LLM's score.
-        """
-        # --- Stage 1: Preparation and Input Validation ---
-
-        # Safely get the refactored code from the prediction object.
-        refactored_code = getattr(prediction, 'refactored_code', None)
-        if not refactored_code:
-            logging.warning("Evaluation failed: No refactored code found in the prediction.")
-            return 0.0
-
-        # Clean the code, removing markdown fences.
-        code_to_evaluate = analysis._extract_python_code(refactored_code)
-        if not code_to_evaluate:
-            logging.warning("Evaluation failed: Extracted code is empty after cleaning.")
-            return 0.0
-
-        # Correctly get the list of TestCase objects directly from the example.
-        tests = getattr(original_example, 'test_cases', [])
-
-        # --- Stage 2: Programmatic Evaluation ---
+        """Process successful programmatic evaluation."""
+        functional_score = (
+            eval_data.functional_check.passed_tests / eval_data.functional_check.total_tests
+            if eval_data.functional_check.total_tests > 0
+            else 1.0
+        )
 
         try:
-            programmatic_result = evaluation.evaluate_refactored_code(code_to_evaluate, tests)
-
-            if isinstance(programmatic_result, Err):
-                # Log the specific error from the programmatic checks for better debugging.
-                logging.warning(f"Programmatic evaluation failed: {programmatic_result.error}")
-                return 0.0
-
-            # If successful, unwrap the detailed evaluation data.
-            eval_data = programmatic_result.value
-
-        except Exception as e:
-            # Catch any unexpected errors during the programmatic evaluation itself.
-            logging.error(f"An unexpected error occurred during programmatic evaluation: {e}", exc_info=True)
-            return 0.0
-
-        # --- Stage 3: LLM-based Final Judgment ---
-
-        # Prepare inputs for the final LLM evaluator.
-        quality_scores = eval_data.quality_scores
-        functional_check = eval_data.functional_check
-
-        # Calculate the functional score (pass rate).
-        if functional_check.total_tests > 0:
-            functional_score = functional_check.passed_tests / functional_check.total_tests
-        else:
-            # If there are no tests, we can't fail any. Consider it a full pass.
-            functional_score = 1.0
-
-        try:
-            # Call the LLM for the final holistic score.
             llm_evaluation = self.evaluator(
-                code_snippet=code_to_evaluate,
-                quality_scores=quality_scores.model_dump_json(),
+                code_snippet=refactored_code,
+                quality_scores=eval_data.quality_scores.model_dump_json(),
                 functional_score=functional_score,
             )
-            # Return the final score from the structured output.
             return llm_evaluation.evaluation.final_score
-
         except Exception as e:
-            # Catch errors from the LLM call (e.g., API errors, response parsing failures).
-            logging.error(f"LLM-based evaluation failed: {e}", exc_info=True)
-            return 0.0
+            logger.error(f"LLM evaluation failed: {e}", exc_info=True)
+            return FAILURE_SCORE
 
-# --- Training Data ---
+    def forward(
+        self,
+        original_example: dspy.Example,
+        prediction: dspy.Prediction
+    ) -> float:
+        refactored_code = getattr(prediction, "refactored_code", "")
+        if not refactored_code:
+            logger.warning("Evaluation aborted: Missing refactored code")
+            return FAILURE_SCORE
 
+        code_to_evaluate = analysis.extract_python_code(refactored_code)
+        if not code_to_evaluate:
+            logger.warning("Evaluation aborted: Empty code extraction")
+            return FAILURE_SCORE
 
-def get_training_data() -> List[dspy.Example]:
-    """
-    Loads training examples from an external JSON file.
-    Decouples training data from application logic for better maintainability.
-    """
-    data_path = Path(__file__).parent / "training_data.json"
+        test_cases = getattr(original_example, "test_cases", [])
+        eval_result: Result[EvaluationResult, str] = (
+            evaluation.evaluate_refactored_code(code_to_evaluate, test_cases)
+        )
+
+        if isinstance(eval_result, Success):
+            return self._handle_evaluation_success(eval_result.unwrap(), code_to_evaluate)
+        else:
+            logger.warning(f"Programmatic evaluation failed: {eval_result.failure()}")
+            return FAILURE_SCORE
+
+# --- Data Loading ---
+def load_training_data() -> list[dspy.Example]:
+    """Load training examples from external JSON file."""
+    data_path = Path(__file__).parent / TRAINING_DATA_FILE
     try:
         with data_path.open("r", encoding="utf-8") as f:
-            training_json = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.warning(f"Could not load or parse training data from {data_path}: {e}")
-        return []
+            return [
+                dspy.Example(
+                    code_snippet=item["code_snippet"],
+                    test_cases=[TestCase(**tc) for tc in item.get("test_cases", [])]
+                ).with_inputs("code_snippet")
+                for item in json.load(f)
+            ]
+    except FileNotFoundError:
+        logger.error(f"Training data file not found: {data_path}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in training data: {e}")
+    except KeyError as e:
+        logger.error(f"Missing required key in training data: {e}")
 
-    examples = []
-    for item in training_json:
-        test_cases = [TestCase(**tc) for tc in item.get("test_cases", [])]
-        example = dspy.Example(
-            code_snippet=item["code_snippet"],
-            test_cases=test_cases,
-        ).with_inputs("code_snippet")
-        examples.append(example)
-
-    return examples
+    return []
