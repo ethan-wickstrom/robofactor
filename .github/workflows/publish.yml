@@ -37,8 +37,19 @@ jobs:
         id: extract_version
         uses: damienaicheh/extract-version-from-tag-action@v1.3.0
 
+      - name: Validate extracted version
+        run: |
+          set -e
+          if [ -z "${{ steps.extract_version.outputs.version }}" ]; then
+            echo "Error: Extracted version is empty."
+            exit 1
+          fi
+          echo "Extracted version: ${{ steps.extract_version.outputs.version }}"
+
       - name: Update pyproject.toml version
         run: |
+          set -e
+          # The extract-version-from-tag-action already strips the 'v' prefix.
           VERSION="${{ steps.extract_version.outputs.version }}"
           echo "Updating pyproject.toml to version ${VERSION}"
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
