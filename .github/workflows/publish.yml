@@ -41,9 +41,8 @@ jobs:
           path: dist/
           retention-days: 1
 
-  publish-to-pypi:
-    name: Publish to PyPI
-    needs: build
+  pypi-publish:
+    name: Upload release to PyPI
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -57,5 +56,5 @@ jobs:
           name: python-package
           path: dist/
 
-      - name: Publish package to PyPI
-        uses: pypi/gh-action-pypi-publish@release/v1
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
