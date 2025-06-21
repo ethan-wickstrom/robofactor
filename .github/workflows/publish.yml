@@ -1,5 +1,5 @@
-# This workflow will build and publish the Python package to PyPI when a new
-# release is published. It uses PyPI's trusted publishing feature for
+# This workflow will build and publish the Python package to PyPI when a release
+# is published. It uses PyPI's trusted publishing feature for
 # secure, passwordless deployment.
 #
 # For more information, see:
@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Fetch all history for all branches and tags for version extraction
+          fetch-depth: 0
 
       - name: Validate version tag
         run: |
@@ -29,6 +32,18 @@ jobs:
             echo "Error: Tag must be in format v*.*.* (e.g., v1.2.3)"
             exit 1
           fi
+
+      - name: Extract version from tag
+        id: extract_version
+        uses: damienaicheh/extract-version-from-tag-action@v1.3.0
+
+      - name: Update pyproject.toml version
+        run: |
+          VERSION="${{ steps.extract_version.outputs.version }}"
+          echo "Updating pyproject.toml to version ${VERSION}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
+          echo "Verifying pyproject.toml:"
+          grep "version =" pyproject.toml
 
       - name: Set up Python
         uses: actions/setup-python@v5
