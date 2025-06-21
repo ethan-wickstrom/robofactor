@@ -17,7 +17,6 @@ try:
     project_root = Path(__file__).parent.parent.resolve()
     sys.path.insert(0, str(project_root / "src"))
     from robofactor.function_extraction import FunctionInfo, parse_python_source
-    from robofactor.functional_types import CliResult, Err, Ok, Result
     from robofactor.main import app as cli_app
     from robofactor.utils import suppress_pydantic_warnings
 except ImportError as e:
@@ -37,21 +36,12 @@ PYPROJECT_DESC_KEY = "description"
 
 
 # --- Data Structures for Generation Pipeline ---
-
 @dataclass(frozen=True)
 class FileAnalysis:
     """Immutable representation of a source file's content and structure."""
 
     relative_path: str
     structure: tuple[FunctionInfo, ...]
-
-
-@dataclass(frozen=True)
-class FileSummary:
-    """The result of summarizing a single file."""
-
-    file_path: str
-    summary: str
 
 
 @dataclass(frozen=True)
@@ -82,7 +72,6 @@ class ProjectContext:
 
 
 # --- Project Analysis Logic ---
-
 class ProjectAnalyzer:
     """Handles all file system I/O and static analysis of the project."""
 
@@ -107,10 +96,13 @@ class ProjectAnalyzer:
         """Parses a Python file to extract its structure."""
         content = self._read_file(path)
         try:
-            structure = tuple(parse_python_source(content, module_name=path.name))
+            # The `parse_python_source` function returns a `Result` container.
+            # We `unwrap()` it to get the value or propagate the exception on failure.
+            structure_result = parse_python_source(content, module_name=path.name)
+            structure_iterator = structure_result.unwrap()
             return FileAnalysis(
                 relative_path=str(path.relative_to(self.root)),
-                structure=structure,
+                structure=tuple(structure_iterator),
             )
         except Exception as e:
             self.console.print(f"[bold red]Error: Failed to parse AST for {path}: {e}[/]")
@@ -125,23 +117,11 @@ class ProjectAnalyzer:
             runner = CliRunner()
             cli_runner_result = runner.invoke(cli_app, ["--help"], catch_exceptions=False)
 
-            if cli_runner_result.exit_code == 0:
-                result: Result[CliResult, str] = Ok(
-                    CliResult(
-                        stdout=cli_runner_result.stdout,
-                        stderr=cli_runner_result.stderr,
-                        exit_code=cli_runner_result.exit_code,
-                    )
-                )
-            else:
-                result = Err(
-                    f"CLI command failed with exit code {cli_runner_result.exit_code}:\n{cli_runner_result.stderr}"
-                )
+            if cli_runner_result.exit_code != 0:
+                error_message = f"CLI command failed with exit code {cli_runner_result.exit_code}:\n{cli_runner_result.stderr or cli_runner_result.stdout}"
+                raise RuntimeError(error_message)
 
-            result.raise_for_status()
-
-            assert isinstance(result, Ok)
-            return result.value.stdout
+            return cli_runner_result.stdout
 
         except Exception as e:
             self.console.print(f"[bold red]Error: Failed to get CLI help text: {e}[/]")
@@ -168,9 +148,12 @@ class ProjectAnalyzer:
         config_files: dict[str, str] = {}
         required_configs = (PYPROJECT_TOML_FILENAME, MAKEFILE_FILENAME)
         for filename in required_configs:
-            config_files[filename] = self._read_file(self.root / filename)
+            try:
+                config_files[filename] = self._read_file(self.root / filename)
+            except FileNotFoundError:
+                self.console.print(f"[yellow]Warning: Config file '{filename}' not found. Skipping.[/yellow]")
 
-        pyproject_data = toml.loads(config_files[PYPROJECT_TOML_FILENAME])
+        pyproject_data = toml.loads(config_files.get(PYPROJECT_TOML_FILENAME, ""))
         project_name = pyproject_data.get(PYPROJECT_PROJECT_KEY, {}).get(
             PYPROJECT_NAME_KEY, "Unknown Project"
         )
@@ -189,7 +172,6 @@ class ProjectAnalyzer:
 
 
 # --- JSON Serialization ---
-
 def _custom_json_encoder(obj: Any) -> Any:
     """A custom encoder to handle dataclasses and other special types."""
     if isinstance(obj, enum.Enum):
@@ -200,13 +182,13 @@ def _custom_json_encoder(obj: Any) -> Any:
         return str(obj)
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
+
 def to_json_string(data: Any) -> str:
     """Converts a Python object (including dataclasses) to a JSON string."""
     return json.dumps(data, default=_custom_json_encoder, indent=2)
 
 
 # --- DSPy Signatures for README Generation ---
-
 class GenerateReadmeOutline(dspy.Signature):
     """
     Generate a logical and comprehensive outline for a project's README.md file.
@@ -280,7 +262,6 @@ class AssembleReadme(dspy.Signature):
 
 
 # --- The Main DSPy Module ---
-
 class ReadmeGenerator(dspy.Module):
     """A DSPy module that orchestrates the entire README generation process."""
 
@@ -341,13 +322,13 @@ class ReadmeGenerator(dspy.Module):
 
 
 # --- CLI Application ---
-
 app = typer.Typer(
     help="An intelligent, context-aware README generator for the robofactor project.",
     add_completion=False,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
+
 
 def configure_dspy(model_name: str, console: Console) -> None:
     """Configures the DSPy framework with the specified language model."""
@@ -358,6 +339,7 @@ def configure_dspy(model_name: str, console: Console) -> None:
     except Exception as e:
         console.print(f"[bold red]Error: Failed to configure DSPy with model '{model_name}': {e}[/]")
         raise typer.Exit(code=1)
+
 
 @app.command()
 def generate(
@@ -406,6 +388,7 @@ def generate(
     console.print(
         f"\n[bold green]✅ README successfully generated at: {output}[/bold green]"
     )
+
 
 if __name__ == "__main__":
     app()

@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from pydantic import BaseModel, Field
-from returns.result import Failure, Result, Success, do, safe
+from returns.result import Failure, Result, Success, safe
 
 from . import analysis
 
@@ -92,7 +92,6 @@ def _check_functional_correctness(
     return FunctionalCheckResult(passed_tests=passed_tests, total_tests=len(tests))
 
 
-@do(Result[EvaluationResult, str])
 def evaluate_refactored_code(
     code: str, tests: list[TestCase]
 ) -> Result[EvaluationResult, str]:
@@ -100,8 +99,9 @@ def evaluate_refactored_code(
     Performs a full evaluation of the refactored code.
 
     This function orchestrates a pipeline of checks (syntax, quality, functional)
-    using a declarative, railway-oriented approach with `returns`'s `do` notation.
-    If any step fails, the entire pipeline short-circuits and returns the error.
+    using a declarative, railway-oriented approach with `returns`'s `.bind()`
+    method. If any step fails, the entire pipeline short-circuits and returns
+    the error.
 
     Args:
         code: The refactored Python code to evaluate.
@@ -112,19 +112,19 @@ def evaluate_refactored_code(
         - `Success(EvaluationResult)` if all checks pass.
         - `Failure(str)` with a descriptive error message if any check fails.
     """
-    func_name = yield _check_syntax(code)
-
-    quality_scores = yield _check_quality(code, func_name).alt(
-        lambda e: f"Quality Check Failed: {e}"
-    )
-
-    functional_check = yield _check_functional_correctness(code, func_name, tests).alt(
-        lambda e: f"Functional Check Failed: {e}"
-    )
-
-    return EvaluationResult(
-        code=code,
-        func_name=func_name,
-        quality_scores=quality_scores,
-        functional_check=functional_check,
+    return _check_syntax(code).bind(
+        lambda func_name: _check_quality(code, func_name)
+        .alt(lambda e: f"Quality Check Failed: {e}")
+        .bind(
+            lambda quality_scores: _check_functional_correctness(code, func_name, tests)
+            .alt(lambda e: f"Functional Check Failed: {e}")
+            .map(
+                lambda functional_check: EvaluationResult(
+                    code=code,
+                    func_name=func_name,
+                    quality_scores=quality_scores,
+                    functional_check=functional_check,
+                )
+            )
+        )
     )

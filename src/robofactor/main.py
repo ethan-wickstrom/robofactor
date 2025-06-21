@@ -14,8 +14,8 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 
 from . import config, ui, utils
-from .analysis import _extract_python_code
-from .dspy_modules import CodeRefactor, RefactoringEvaluator, get_training_data
+from .analysis import extract_python_code
+from .dspy_modules import CodeRefactor, RefactoringEvaluator, load_training_data
 from .evaluation import TestCase, evaluate_refactored_code
 
 app = typer.Typer()
@@ -57,7 +57,7 @@ def _load_or_compile_model(
             num_threads=8,
         )
         teleprompter.compile(
-            refactorer, trainset=get_training_data(), requires_permission_to_run=False
+            refactorer, trainset=load_training_data(), requires_permission_to_run=False
         )
         console.print(f"Optimization complete. Saving to {optimizer_path}...")
         self_correcting_refactorer.save(str(optimizer_path), save_program=True)
@@ -90,7 +90,7 @@ def _run_refactoring_on_file(
     prediction = refactorer(**refactor_example.inputs())
     ui.display_refactoring_process(console, prediction)
 
-    refactored_code = _extract_python_code(prediction.refactored_code)
+    refactored_code = extract_python_code(prediction.refactored_code)
     raw_tests = refactor_example.get("test_cases", [])
     tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
 

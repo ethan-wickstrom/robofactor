@@ -32,7 +32,7 @@ def display_refactoring_process(console: Console, prediction: dspy.Prediction) -
     console.print(
         Panel(
             Syntax(
-                analysis._extract_python_code(prediction.refactored_code),
+                analysis.extract_python_code(prediction.refactored_code),
                 "python",
                 theme=config.RICH_SYNTAX_THEME,
                 line_numbers=True,

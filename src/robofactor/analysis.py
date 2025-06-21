@@ -22,7 +22,7 @@ from . import config
 from .evaluation import CodeQualityScores, TestCase
 
 
-def _extract_python_code(text: str) -> str:
+def extract_python_code(text: str) -> str:
     """Extracts Python code from a markdown block, returns original text if no block is found."""
     match = re.search(r"```python\n(.*?)\n```", text, re.DOTALL)
     return match.group(1).strip() if match else text
