@@ -2,7 +2,9 @@
 Utility functions for static and dynamic code analysis.
 
 This module includes functions for syntax validation, quality scoring (linting,
-complexity, typing, docstrings), and functional correctness checking.
+complexity, typing, docstrings), and functional correctness checking. These
+functions are designed to be pure or to have their side effects managed by
+callers, often using decorators like `@safe` from the `returns` library.
 """
 
 import ast
@@ -21,13 +23,18 @@ from .evaluation import CodeQualityScores, TestCase
 
 
 def _extract_python_code(text: str) -> str:
-    """Extracts Python code from a markdown block."""
+    """Extracts Python code from a markdown block, returns original text if no block is found."""
     match = re.search(r"```python\n(.*?)\n```", text, re.DOTALL)
-    return match.group(1) if match else text
+    return match.group(1).strip() if match else text
 
 
 def check_syntax(code: str) -> tuple[bool, str | None, str | None]:
-    """Checks for valid Python syntax and a top-level function."""
+    """
+    Checks for valid Python syntax and a top-level function definition.
+
+    Returns a tuple indicating validity, the function name, and an error message.
+    This format is consumed by a wrapper that converts it into a `Result` monad.
+    """
     try:
         tree = ast.parse(code)
         func_node = next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None)
@@ -62,12 +69,19 @@ def _get_ast_based_scores(tree: ast.AST, func_name: str | None) -> tuple[float, 
 
 
 def check_code_quality(code: str, func_name: str | None = None) -> CodeQualityScores:
-    """Analyzes Python code for quality metrics using flake8 and AST."""
+    """
+    Analyzes Python code for quality metrics using flake8 and AST.
+
+    This function performs I/O by creating a temporary file and running a
+    subprocess. It is designed to be wrapped by a decorator like `@safe`
+    or `@impure_safe` to handle potential exceptions.
+    """
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
         tmp.write(code)
         tmp_path = Path(tmp.name)
 
     try:
+        # Exceptions from subprocess.run will be caught by the @safe wrapper in the caller.
         result = subprocess.run(
             [
                 "flake8",
@@ -76,7 +90,7 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
             ],
             capture_output=True,
             text=True,
-            check=False,
+            check=False,  # We manually check output, not exit code.
         )
         all_issues = result.stdout.strip().splitlines() if result.stdout else []
 
@@ -90,11 +104,9 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
         complexity_score = 1.0 if not complexity_warnings else 0.0
         linting_score = max(0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues)))
 
-        try:
-            tree = ast.parse(code)
-            docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
-        except SyntaxError:
-            docstring_score, typing_score = 0.0, 0.0
+        # A SyntaxError here will be caught by the @safe wrapper in the caller.
+        tree = ast.parse(code)
+        docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
 
         return CodeQualityScores(
             linting_score=linting_score,
@@ -104,12 +116,13 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
             linting_issues=linting_issues,
         )
     finally:
+        # Ensure the temporary file is always cleaned up.
         if tmp_path.exists():
             os.unlink(tmp_path)
 
 
 def _build_execution_script(func_name: str, test_case: TestCase) -> str:
-    """Constructs a robust Python script to execute a function with a test case."""
+    """Constructs a Python script to execute a function with a given test case."""
     args_json = json.dumps(test_case.args)
     kwargs_json = json.dumps(test_case.kwargs)
 
@@ -124,34 +137,40 @@ def _build_execution_script(func_name: str, test_case: TestCase) -> str:
         args = json.loads('''{args_json}''')
         kwargs = json.loads('''{kwargs_json}''')
 
-        try:
-            result = {func_name}(*args, **kwargs)
-            print(json.dumps(result))
-        except Exception as e:
-            print(f"Execution failed for {func_name}: {{e}}", file=sys.stderr)
-            sys.exit(1)
+        result = {func_name}(*args, **kwargs)
+        print(json.dumps(result))
         """
     )
 
 
 def check_functional_correctness(code: str, func_name: str, test_cases: list[TestCase]) -> int:
-    """Executes test cases against code in a sandboxed environment."""
+    """
+    Executes test cases against code in a sandboxed Python interpreter.
+
+    This function can raise exceptions if the provided code is invalid or if
+    the test execution fails unexpectedly. It is designed to be wrapped by a
+
+    decorator like `@safe` to handle these failures gracefully.
+    """
     if not test_cases:
         return 0
+
     passed_count = 0
-    try:
-        with dspy.PythonInterpreter() as interp:
-            interp.execute(code)
-            for test in test_cases:
-                try:
-                    exec_script = _build_execution_script(func_name, test)
-                    actual_output_json = interp.execute(exec_script)
-                    actual_output = json.loads(actual_output_json)
-                    normalized_expected_output = json.loads(json.dumps(test.expected_output))
-                    if actual_output == normalized_expected_output:
-                        passed_count += 1
-                except Exception:
-                    continue
-    except Exception:
-        return 0
+    # A failure in the interpreter setup will be caught by the @safe wrapper.
+    with dspy.PythonInterpreter() as interp:
+        interp.execute(code)  # Define the function in the interpreter's scope.
+        for test in test_cases:
+            # Handle failures for individual test cases gracefully to allow others to run.
+            try:
+                exec_script = _build_execution_script(func_name, test)
+                actual_output_json = interp.execute(exec_script)
+                actual_output = json.loads(actual_output_json)
+
+                # Normalize expected output to ensure consistent comparison.
+                normalized_expected_output = json.loads(json.dumps(test.expected_output))
+                if actual_output == normalized_expected_output:
+                    passed_count += 1
+            except Exception:
+                # If a single test case fails to execute or assert, continue to the next.
+                continue
     return passed_count

@@ -9,11 +9,10 @@ from typing import Any, List, Optional
 
 import dspy
 from pydantic import BaseModel, Field, field_validator
+from returns.result import Failure, Result, Success
 
 from . import analysis, evaluation
-from .evaluation import TestCase
-from .functional_types import Err, Ok
-
+from .evaluation import EvaluationResult, TestCase
 
 # --- Pydantic Models for Structured Outputs ---
 
@@ -158,75 +157,49 @@ class RefactoringEvaluator(dspy.Module):
         """
         Evaluates the refactored code through a robust, multi-stage pipeline.
 
-        This method performs the following steps:
-        1. Safely extracts the refactored code and test cases from the inputs.
-        2. Executes programmatic checks (linting, complexity, functional tests).
-        3. If programmatic checks pass, it uses an LLM to provide a final, holistic score.
-
         Returns 0.0 on any failure to signal the optimizer, otherwise returns the LLM's score.
         """
-        # --- Stage 1: Preparation and Input Validation ---
-
-        # Safely get the refactored code from the prediction object.
-        refactored_code = getattr(prediction, 'refactored_code', None)
+        refactored_code = getattr(prediction, "refactored_code", None)
         if not refactored_code:
-            logging.warning("Evaluation failed: No refactored code found in the prediction.")
+            logging.warning("Evaluation failed: No refactored code found.")
             return 0.0
 
-        # Clean the code, removing markdown fences.
         code_to_evaluate = analysis._extract_python_code(refactored_code)
         if not code_to_evaluate:
-            logging.warning("Evaluation failed: Extracted code is empty after cleaning.")
+            logging.warning("Evaluation failed: Extracted code is empty.")
             return 0.0
 
-        # Correctly get the list of TestCase objects directly from the example.
-        tests = getattr(original_example, 'test_cases', [])
+        tests = getattr(original_example, "test_cases", [])
 
-        # --- Stage 2: Programmatic Evaluation ---
+        programmatic_result: Result[EvaluationResult, str] = evaluation.evaluate_refactored_code(
+            code_to_evaluate, tests
+        )
 
-        try:
-            programmatic_result = evaluation.evaluate_refactored_code(code_to_evaluate, tests)
+        match programmatic_result:
+            case Success(eval_data):
+                quality_scores = eval_data.quality_scores
+                functional_check = eval_data.functional_check
+                functional_score = (
+                    functional_check.passed_tests / functional_check.total_tests
+                    if functional_check.total_tests > 0
+                    else 1.0
+                )
 
-            if isinstance(programmatic_result, Err):
-                # Log the specific error from the programmatic checks for better debugging.
-                logging.warning(f"Programmatic evaluation failed: {programmatic_result.error}")
+                try:
+                    llm_evaluation = self.evaluator(
+                        code_snippet=code_to_evaluate,
+                        quality_scores=quality_scores.model_dump_json(),
+                        functional_score=functional_score,
+                    )
+                    return llm_evaluation.evaluation.final_score
+                except Exception as e:
+                    logging.error(f"LLM-based evaluation failed: {e}", exc_info=True)
+                    return 0.0
+
+            case Failure(error_message):
+                logging.warning(f"Programmatic evaluation failed: {error_message}")
                 return 0.0
 
-            # If successful, unwrap the detailed evaluation data.
-            eval_data = programmatic_result.value
-
-        except Exception as e:
-            # Catch any unexpected errors during the programmatic evaluation itself.
-            logging.error(f"An unexpected error occurred during programmatic evaluation: {e}", exc_info=True)
-            return 0.0
-
-        # --- Stage 3: LLM-based Final Judgment ---
-
-        # Prepare inputs for the final LLM evaluator.
-        quality_scores = eval_data.quality_scores
-        functional_check = eval_data.functional_check
-
-        # Calculate the functional score (pass rate).
-        if functional_check.total_tests > 0:
-            functional_score = functional_check.passed_tests / functional_check.total_tests
-        else:
-            # If there are no tests, we can't fail any. Consider it a full pass.
-            functional_score = 1.0
-
-        try:
-            # Call the LLM for the final holistic score.
-            llm_evaluation = self.evaluator(
-                code_snippet=code_to_evaluate,
-                quality_scores=quality_scores.model_dump_json(),
-                functional_score=functional_score,
-            )
-            # Return the final score from the structured output.
-            return llm_evaluation.evaluation.final_score
-
-        except Exception as e:
-            # Catch errors from the LLM call (e.g., API errors, response parsing failures).
-            logging.error(f"LLM-based evaluation failed: {e}", exc_info=True)
-            return 0.0
 
 # --- Training Data ---
 
