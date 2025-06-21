@@ -3,7 +3,7 @@
 The robot who refactors: /[^_^]\
 
 [![PyPI version](https://img.shields.io/pypi/v/robofactor)](https://pypi.org/project/robofactor)
-[![Build Status](https://github.com/ethan-wickstrom/robofactor/actions/workflows/ci.yml/badge.svg)](https://github.com/ethan-wickstrom/robofactor/actions)
+[![Build Status](https://github.com/ethan-wickstrom/robofactor/actions/workflows/publish.yml/badge.svg)](https://github.com/ethan-wickstrom/robofactor/actions)
 [![License](https://img.shields.io/pypi/l/robofactor)](https://github.com/ethan-wickstrom/robofactor)
 [![Python versions](https://img.shields.io/pypi/pyversions/robofactor)](https://pypi.org/project/robofactor)
 
