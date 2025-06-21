@@ -1,9 +1,10 @@
-# This workflow will build and publish the Python package to PyPI when a release is created.
-# It uses PyPI's trusted publishing feature for secure, passwordless deployment.
+# This workflow will build and publish the Python package to PyPI when a push
+# to the main branch occurs. It uses PyPI's trusted publishing feature for
+# secure, passwordless deployment.
 #
 # For more information, see:
 # - https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
-# - https://github.com/pypi/gh-action-pypi-publish
+# - https://github.com/pypa/gh-action-pypi-publish
 
 name: Publish Python Package to PyPI
 
@@ -29,6 +30,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
+        # Use the version recommended by the official setup-uv documentation.
         uses: astral-sh/setup-uv@v6
 
       - name: Build package
@@ -39,16 +41,20 @@ jobs:
         with:
           name: python-package
           path: dist/
-          retention-days: 1
+          # Increase retention to reduce risk of expiration between jobs.
+          retention-days: 7
 
   pypi-publish:
     name: Upload release to PyPI
+    # This job depends on the build job completing successfully.
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/robofactor
     permissions:
-      id-token: write # This is required for trusted publishing
+      # This permission is required for trusted publishing.
+      id-token: write
     steps:
       - name: Download a single artifact
         uses: actions/download-artifact@v4
