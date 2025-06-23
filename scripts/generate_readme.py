@@ -1,22 +1,29 @@
+#!/usr/bin/env python3
+"""
+Intelligent README generator for the robofactor project.
+
+This module uses DSPy with Pydantic integration to analyze the project structure
+and generate a comprehensive README based on extracted information rather than assumptions.
+"""
 from __future__ import annotations
 
-import enum
-import json
+import logging
 import sys
-from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
 import dspy
 import toml
 import typer
+from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+# Add project root to path for imports
 try:
     project_root = Path(__file__).parent.parent.resolve()
     sys.path.insert(0, str(project_root / "src"))
-    from robofactor.function_extraction import FunctionInfo, parse_python_source
+    from robofactor.function_extraction import parse_python_source
     from robofactor.main import app as cli_app
     from robofactor.utils import suppress_pydantic_warnings
 except ImportError as e:
@@ -27,112 +34,217 @@ except ImportError as e:
     )
     sys.exit(1)
 
-# --- Constants ---
-PYPROJECT_TOML_FILENAME = "pyproject.toml"
-MAKEFILE_FILENAME = "Makefile"
-PYPROJECT_PROJECT_KEY = "project"
-PYPROJECT_NAME_KEY = "name"
-PYPROJECT_DESC_KEY = "description"
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+# --- Data Models (Pydantic) ---
+
+class FunctionMetadata(BaseModel):
+    """Metadata about a function extracted from source code."""
+    name: str
+    file_path: str
+    docstring: str | None
+    is_async: bool
+    decorators: list[str]
+    parameters: list[str]
 
 
-# --- Data Structures for Generation Pipeline ---
-@dataclass(frozen=True)
-class FileAnalysis:
-    """Immutable representation of a source file's content and structure."""
-
+class SourceFileAnalysis(BaseModel):
+    """Analysis of a single source file."""
     relative_path: str
-    structure: tuple[FunctionInfo, ...]
+    functions: list[FunctionMetadata]
+    imports: list[str] = Field(default_factory=list)
+    classes: list[str] = Field(default_factory=list)
 
 
-@dataclass(frozen=True)
-class ReadmeSection:
-    """Represents a proposed section for the README."""
+class ProjectMetadata(BaseModel):
+    """Basic project metadata from pyproject.toml."""
+    name: str
+    description: str
+    version: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    dev_dependencies: list[str] = Field(default_factory=list)
+    homepage: str | None = None
+    repository: str | None = None
 
+
+class DevelopmentEnvironment(BaseModel):
+    """Extracted development environment information."""
+    package_manager: str = Field(description="The package manager used (e.g., uv, pip, poetry)")
+    install_command: str = Field(description="Command to install the package")
+    dev_install_command: str = Field(description="Command to install with dev dependencies")
+    available_commands: dict[str, str] = Field(
+        default_factory=dict,
+        description="Available make/task commands and their descriptions"
+    )
+    python_version: str | None = None
+
+
+class ProjectFeatures(BaseModel):
+    """High-level features extracted from the project."""
+    core_technologies: list[str] = Field(description="Main technologies/libraries used")
+    cli_capabilities: list[str] = Field(description="CLI commands and options available")
+    key_modules: dict[str, str] = Field(
+        description="Key modules and their purposes",
+        default_factory=dict
+    )
+    testing_framework: str | None = None
+    code_quality_tools: list[str] = Field(default_factory=list)
+
+
+class ExtractedContext(BaseModel):
+    """Complete extracted context for README generation."""
+    metadata: ProjectMetadata
+    environment: DevelopmentEnvironment
+    features: ProjectFeatures
+    source_analyses: list[SourceFileAnalysis]
+    cli_help_text: str
+
+
+class ReadmeSection(BaseModel):
+    """A section in the README outline."""
     title: str
     description: str
+    priority: int = Field(default=5, ge=1, le=10)
 
 
-@dataclass(frozen=True)
-class GeneratedSection:
-    """Represents a fully generated section with its Markdown content."""
-
+class GeneratedSection(BaseModel):
+    """A generated README section with content."""
     title: str
     content: str
 
 
-@dataclass(frozen=True)
-class ProjectContext:
-    """Immutable snapshot of the entire project's state for generation."""
+# --- Service Interfaces (Dependency Injection) ---
 
-    project_name: str
-    project_description: str
-    source_analyses: tuple[FileAnalysis, ...]
-    config_files: dict[str, str]
-    cli_help_text: str
+class FileReaderProtocol(Protocol):
+    """Protocol for file reading operations."""
+    def read_file(self, path: Path) -> str: ...
+    def file_exists(self, path: Path) -> bool: ...
 
 
-# --- Project Analysis Logic ---
-class ProjectAnalyzer:
-    """Handles all file system I/O and static analysis of the project."""
+class CLIRunnerProtocol(Protocol):
+    """Protocol for running CLI commands."""
+    def get_help_text(self) -> str: ...
 
-    def __init__(self, root: Path, console: Console):
-        """Initializes the analyzer."""
-        self.root = root
-        self.console = console
-        self.source_dir = root / "src" / "robofactor"
 
-    def _read_file(self, path: Path) -> str:
-        """Reads a file, raising a FileNotFoundError on failure."""
+# --- Concrete Service Implementations ---
+
+class FileReader:
+    """Handles file system operations."""
+
+    def read_file(self, path: Path) -> str:
+        """Read a file's contents."""
         try:
             return path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            self.console.print(f"[bold red]Error: File not found at {path}[/]")
+            logger.error(f"File not found: {path}")
             raise
         except Exception as e:
-            self.console.print(f"[bold red]Error: Failed to read {path}: {e}[/]")
+            logger.error(f"Failed to read {path}: {e}")
             raise
 
-    def _analyze_source_file(self, path: Path) -> FileAnalysis:
-        """Parses a Python file to extract its structure."""
-        content = self._read_file(path)
-        try:
-            # The `parse_python_source` function returns a `Result` container.
-            # We `unwrap()` it to get the value or propagate the exception on failure.
-            structure_result = parse_python_source(content, module_name=path.name)
-            structure_iterator = structure_result.unwrap()
-            return FileAnalysis(
-                relative_path=str(path.relative_to(self.root)),
-                structure=tuple(structure_iterator),
-            )
-        except Exception as e:
-            self.console.print(f"[bold red]Error: Failed to parse AST for {path}: {e}[/]")
-            raise
+    def file_exists(self, path: Path) -> bool:
+        """Check if a file exists."""
+        return path.exists()
 
-    def get_cli_help_text(self) -> str:
-        """Captures the --help output from the project's Typer CLI."""
-        self.console.print("[dim]Capturing CLI help text...[/dim]")
+
+class CLIRunner:
+    """Handles CLI command execution."""
+
+    def get_help_text(self) -> str:
+        """Get the CLI help text."""
         try:
             from typer.testing import CliRunner
-
             runner = CliRunner()
-            cli_runner_result = runner.invoke(cli_app, ["--help"], catch_exceptions=False)
+            result = runner.invoke(cli_app, ["--help"], catch_exceptions=False)
 
-            if cli_runner_result.exit_code != 0:
-                error_message = f"CLI command failed with exit code {cli_runner_result.exit_code}:\n{cli_runner_result.stderr or cli_runner_result.stdout}"
-                raise RuntimeError(error_message)
+            if result.exit_code != 0:
+                error_msg = f"CLI failed with exit code {result.exit_code}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
-            return cli_runner_result.stdout
-
+            return result.stdout
         except Exception as e:
-            self.console.print(f"[bold red]Error: Failed to get CLI help text: {e}[/]")
+            logger.error(f"Failed to get CLI help text: {e}")
             raise
 
-    def analyze(self) -> ProjectContext:
-        """Performs a full analysis of the project."""
-        self.console.print(f"[dim]Analyzing project at: {self.root}[/dim]")
 
+# --- Project Analyzer ---
+
+class ProjectAnalyzer:
+    """Analyzes project structure and extracts information."""
+
+    def __init__(
+        self,
+        root: Path,
+        file_reader: FileReaderProtocol,
+        cli_runner: CLIRunnerProtocol,
+        console: Console | None = None
+    ):
+        self.root = root
+        self.file_reader = file_reader
+        self.cli_runner = cli_runner
+        self.console = console or Console()
+        self.source_dir = root / "src" / "robofactor"
+
+    def analyze_source_file(self, path: Path) -> SourceFileAnalysis:
+        """Analyze a Python source file."""
+        content = self.file_reader.read_file(path)
+
+        try:
+            result = parse_python_source(content, module_name=path.name)
+            functions = list(result.unwrap())
+
+            # Convert FunctionInfo to our simplified FunctionMetadata
+            func_metadata = [
+                FunctionMetadata(
+                    name=f.name,
+                    file_path=str(path.relative_to(self.root)),
+                    docstring=f.docstring,
+                    is_async=f.is_async,
+                    decorators=[d.name for d in f.decorators],
+                    parameters=[p.name for p in f.parameters]
+                )
+                for f in functions
+            ]
+
+            return SourceFileAnalysis(
+                relative_path=str(path.relative_to(self.root)),
+                functions=func_metadata
+            )
+        except Exception as e:
+            logger.error(f"Failed to parse {path}: {e}")
+            raise
+
+    def extract_project_metadata(self) -> ProjectMetadata:
+        """Extract metadata from pyproject.toml."""
+        pyproject_path = self.root / "pyproject.toml"
+        content = self.file_reader.read_file(pyproject_path)
+        data = toml.loads(content)
+
+        project = data.get("project", {})
+        deps = project.get("dependencies", [])
+        dev_deps = data.get("dependency-groups", {}).get("dev", [])
+        urls = project.get("urls", {})
+
+        return ProjectMetadata(
+            name=project.get("name", "Unknown"),
+            description=project.get("description", ""),
+            version=project.get("version"),
+            authors=[a.get("name", "") for a in project.get("authors", [])],
+            dependencies=deps,
+            dev_dependencies=dev_deps,
+            homepage=urls.get("Homepage"),
+            repository=urls.get("Repository")
+        )
+
+    def analyze_all_source_files(self) -> list[SourceFileAnalysis]:
+        """Analyze all Python source files."""
         py_files = [p for p in self.source_dir.glob("*.py") if p.name != "__init__.py"]
-        analyses: list[FileAnalysis] = []
+        analyses = []
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -140,204 +252,212 @@ class ProjectAnalyzer:
             transient=True,
         ) as progress:
             task = progress.add_task("Analyzing source files...", total=len(py_files))
+
             for file_path in py_files:
                 progress.update(task, description=f"Parsing {file_path.name}")
-                analyses.append(self._analyze_source_file(file_path))
+                analyses.append(self.analyze_source_file(file_path))
                 progress.advance(task)
 
-        config_files: dict[str, str] = {}
-        required_configs = (PYPROJECT_TOML_FILENAME, MAKEFILE_FILENAME)
-        for filename in required_configs:
-            try:
-                config_files[filename] = self._read_file(self.root / filename)
-            except FileNotFoundError:
-                self.console.print(f"[yellow]Warning: Config file '{filename}' not found. Skipping.[/yellow]")
+        return analyses
 
-        pyproject_data = toml.loads(config_files.get(PYPROJECT_TOML_FILENAME, ""))
-        project_name = pyproject_data.get(PYPROJECT_PROJECT_KEY, {}).get(
-            PYPROJECT_NAME_KEY, "Unknown Project"
-        )
-        project_desc = pyproject_data.get(PYPROJECT_PROJECT_KEY, {}).get(
-            PYPROJECT_DESC_KEY, "No description found."
-        )
-        cli_help_text = self.get_cli_help_text()
-
-        return ProjectContext(
-            project_name=project_name,
-            project_description=project_desc,
-            source_analyses=tuple(analyses),
-            config_files=config_files,
-            cli_help_text=cli_help_text,
-        )
+    def get_cli_help(self) -> str:
+        """Get CLI help text."""
+        self.console.print("[dim]Capturing CLI help text...[/dim]")
+        return self.cli_runner.get_help_text()
 
 
-# --- JSON Serialization ---
-def _custom_json_encoder(obj: Any) -> Any:
-    """A custom encoder to handle dataclasses and other special types."""
-    if isinstance(obj, enum.Enum):
-        return obj.value
-    if is_dataclass(obj) and not isinstance(obj, type):
-        return asdict(obj)
-    if isinstance(obj, Path):
-        return str(obj)
-    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+# --- DSPy Signatures with Pydantic ---
 
+class ExtractPackageManager(dspy.Signature):
+    """Extract the package manager and installation commands from project files."""
 
-def to_json_string(data: Any) -> str:
-    """Converts a Python object (including dataclasses) to a JSON string."""
-    return json.dumps(data, default=_custom_json_encoder, indent=2)
-
-
-# --- DSPy Signatures for README Generation ---
-class GenerateReadmeOutline(dspy.Signature):
-    """
-    Generate a logical and comprehensive outline for a project's README.md file.
-
-    IMPORTANT: You MUST prioritize information from the provided `project_context`
-    over your own knowledge. The context contains the ground truth for this project,
-    including file contents and configurations.
-    """
-
-    project_context: str = dspy.InputField(
-        desc=(
-            "A JSON object containing the project's ground truth. It includes: "
-            "'project_name', 'project_description', 'source_analyses' (AST parsing of source files), "
-            "'cli_help_text' (output of --help), and 'config_files'. The 'config_files' key holds the "
-            "full content of important files like 'pyproject.toml' and 'Makefile'. "
-            "Use 'Makefile' for installation and development commands. "
-            "Use 'pyproject.toml' for dependencies and project metadata."
-        )
+    makefile_content: str = dspy.InputField(
+        desc="Content of the Makefile"
     )
-    outline: list[dict] = dspy.OutputField(
-        desc=(
-            "A list of sections for the README. Each item should be a dictionary with 'title' and 'description' keys. "
-            "The description must specify what content to include in that section, referencing the ground truth from the project_context."
-        )
+    pyproject_content: str = dspy.InputField(
+        desc="Content of pyproject.toml"
+    )
+    package_manager: str = dspy.OutputField(
+        desc="The package manager used (e.g., 'uv', 'pip', 'poetry')"
+    )
+    install_command: str = dspy.OutputField(
+        desc="The exact command to install the package"
+    )
+    dev_install_command: str = dspy.OutputField(
+        desc="The exact command to install with dev dependencies"
+    )
+
+
+class ExtractDevelopmentCommands(dspy.Signature):
+    """Extract available development commands from Makefile."""
+
+    makefile_content: str = dspy.InputField(
+        desc="Content of the Makefile"
+    )
+    commands: dict[str, str] = dspy.OutputField(
+        desc="Dictionary mapping command names to their descriptions"
+    )
+
+
+class ExtractProjectFeatures(dspy.Signature):
+    """Extract key features and technologies from the project."""
+
+    metadata: ProjectMetadata = dspy.InputField()
+    source_analyses: list[SourceFileAnalysis] = dspy.InputField()
+    cli_help_text: str = dspy.InputField()
+    features: ProjectFeatures = dspy.OutputField()
+
+
+class GenerateReadmeOutline(dspy.Signature):
+    """Generate a README outline based on extracted context."""
+
+    context: ExtractedContext = dspy.InputField()
+    sections: list[ReadmeSection] = dspy.OutputField(
+        desc="List of sections for the README, ordered by priority"
     )
 
 
 class GenerateSectionContent(dspy.Signature):
-    """
-    Generate the Markdown content for a single section of the README.
+    """Generate content for a specific README section."""
 
-    IMPORTANT: You MUST prioritize information from the provided `project_context`
-    over your own knowledge. Adhere strictly to the file contents provided in the context.
-    For example, if the Makefile specifies using 'uv', you must use 'uv' in the installation instructions.
-    """
-
-    project_context: str = dspy.InputField(
-        desc=(
-            "A JSON object containing all analyzed information about the project. This is the ground truth. "
-            "It includes 'project_name', 'project_description', 'source_analyses', 'cli_help_text', and "
-            "'config_files' (containing the content of 'pyproject.toml' and 'Makefile')."
-        )
-    )
-    section_title: str = dspy.InputField(desc="The title of the section to generate.")
-    section_description: str = dspy.InputField(
-        desc="A description of the content that should be in this section, as determined by the outline."
-    )
-    section_content: str = dspy.OutputField(
-        desc="The fully-formed Markdown content for this specific section, grounded in the provided context."
+    context: ExtractedContext = dspy.InputField()
+    section: ReadmeSection = dspy.InputField()
+    content: str = dspy.OutputField(
+        desc="Markdown content for this section"
     )
 
 
 class AssembleReadme(dspy.Signature):
-    """
-    Assemble the final README.md from a list of generated sections.
+    """Assemble the final README from generated sections."""
 
-    Ensure the final output is clean, well-formatted, and includes a table of contents.
-    """
-
-    project_name: str = dspy.InputField(desc="The name of the project.")
-    project_description: str = dspy.InputField(desc="A one-line description of the project.")
-    generated_sections: str = dspy.InputField(
-        desc="A JSON string of a list of generated sections, each with a 'title' and 'content'key."
-    )
+    project_name: str = dspy.InputField()
+    project_description: str = dspy.InputField()
+    sections: list[GeneratedSection] = dspy.InputField()
     readme_content: str = dspy.OutputField(
-        desc=(
-            "The complete, final README.md content. It must include a title, the project description, "
-            "a table of contents, and all the provided sections formatted professionally with Markdown."
-        )
+        desc="Complete README.md content with proper formatting"
     )
 
 
-# --- The Main DSPy Module ---
-class ReadmeGenerator(dspy.Module):
-    """A DSPy module that orchestrates the entire README generation process."""
+# --- DSPy Modules ---
+
+class ContextExtractor(dspy.Module):
+    """Extracts specific context from project files."""
 
     def __init__(self):
-        """Initializes the sub-modules for each step of the generation pipeline."""
+        super().__init__()
+        self.package_extractor = dspy.ChainOfThought(ExtractPackageManager)
+        self.commands_extractor = dspy.ChainOfThought(ExtractDevelopmentCommands)
+        self.features_extractor = dspy.ChainOfThought(ExtractProjectFeatures)
+
+    def forward(
+        self,
+        metadata: ProjectMetadata,
+        source_analyses: list[SourceFileAnalysis],
+        makefile_content: str,
+        pyproject_content: str,
+        cli_help_text: str,
+        python_version: str | None = None
+    ) -> ExtractedContext:
+        """Extract all context from project files."""
+
+        # Extract package manager and install commands
+        pkg_result = self.package_extractor(
+            makefile_content=makefile_content,
+            pyproject_content=pyproject_content
+        )
+
+        # Extract development commands
+        cmd_result = self.commands_extractor(
+            makefile_content=makefile_content
+        )
+
+        # Create development environment
+        environment = DevelopmentEnvironment(
+            package_manager=pkg_result.package_manager,
+            install_command=pkg_result.install_command,
+            dev_install_command=pkg_result.dev_install_command,
+            available_commands=cmd_result.commands,
+            python_version=python_version
+        )
+
+        # Extract project features
+        features_result = self.features_extractor(
+            metadata=metadata,
+            source_analyses=source_analyses,
+            cli_help_text=cli_help_text
+        )
+
+        return ExtractedContext(
+            metadata=metadata,
+            environment=environment,
+            features=features_result.features,
+            source_analyses=source_analyses,
+            cli_help_text=cli_help_text
+        )
+
+
+class ReadmeGenerator(dspy.Module):
+    """Generates README content from extracted context."""
+
+    def __init__(self):
         super().__init__()
         self.outline_generator = dspy.ChainOfThought(GenerateReadmeOutline)
         self.section_generator = dspy.ChainOfThought(GenerateSectionContent)
         self.assembler = dspy.ChainOfThought(AssembleReadme)
 
-    def forward(self, project_context: ProjectContext) -> dspy.Prediction:
-        """
-        Executes the two-stage README generation pipeline.
+    def forward(self, context: ExtractedContext) -> dspy.Prediction:
+        """Generate complete README from context."""
 
-        Args:
-            project_context: The analyzed state of the project.
+        # Generate outline
+        outline_result = self.outline_generator(context=context)
+        sections = sorted(outline_result.sections, key=lambda s: s.priority)
 
-        Returns:
-            A dspy.Prediction object containing the final readme_content and
-            intermediate artifacts for inspection.
-        """
-        context_json = to_json_string(project_context)
-
-        # Stage 1: Generate the README outline
-        outline_prediction = self.outline_generator(project_context=context_json)
-        readme_outline = [
-            ReadmeSection(title=s["title"], description=s["description"])
-            for s in outline_prediction.outline
-        ]
-
-        # Stage 2: Generate content for each section in the outline
+        # Generate content for each section
         generated_sections = []
-        for section in readme_outline:
-            section_content_prediction = self.section_generator(
-                project_context=context_json,
-                section_title=section.title,
-                section_description=section.description,
+        for section in sections:
+            section_result = self.section_generator(
+                context=context,
+                section=section
             )
             generated_sections.append(
                 GeneratedSection(
                     title=section.title,
-                    content=section_content_prediction.section_content,
+                    content=section_result.content
                 )
             )
 
-        # Stage 3: Assemble the final README
-        final_prediction = self.assembler(
-            project_name=project_context.project_name,
-            project_description=project_context.project_description,
-            generated_sections=to_json_string(generated_sections),
+        # Assemble final README
+        final_result = self.assembler(
+            project_name=context.metadata.name,
+            project_description=context.metadata.description,
+            sections=generated_sections
         )
 
         return dspy.Prediction(
-            outline=readme_outline,
+            outline=sections,
             generated_sections=generated_sections,
-            readme_content=final_prediction.readme_content,
+            readme_content=final_result.readme_content
         )
 
 
-# --- CLI Application ---
+# --- Main Application ---
+
 app = typer.Typer(
-    help="An intelligent, context-aware README generator for the robofactor project.",
+    help="Intelligent README generator for the robofactor project",
     add_completion=False,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
 
 
-def configure_dspy(model_name: str, console: Console) -> None:
-    """Configures the DSPy framework with the specified language model."""
-    console.print(f"[dim]Configuring LLM: [bold]{model_name}[/bold]...[/dim]")
+def configure_dspy(model_name: str) -> None:
+    """Configure DSPy with the specified model."""
+    logger.info(f"Configuring DSPy with model: {model_name}")
     try:
         llm = dspy.LM(model_name, max_tokens=64000)
         dspy.configure(lm=llm)
     except Exception as e:
-        console.print(f"[bold red]Error: Failed to configure DSPy with model '{model_name}': {e}[/]")
+        logger.error(f"Failed to configure DSPy: {e}")
         raise typer.Exit(code=1)
 
 
@@ -348,7 +468,6 @@ def generate(
         "--output",
         "-o",
         help="Path to write the generated README.md file.",
-        show_default=True,
         writable=True,
     ),
     model: str = typer.Option(
@@ -356,38 +475,90 @@ def generate(
         "--model",
         "-m",
         help="Language model to use for generation.",
-        show_default=True,
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose logging.",
     ),
 ) -> None:
-    """
-    Analyzes the project and generates a comprehensive README.md.
-    """
+    """Analyze the project and generate a comprehensive README."""
     suppress_pydantic_warnings()
+
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
     console = Console()
     console.print("\n[bold cyan]═══ Robofactor README Generator ═══[/bold cyan]\n")
 
     try:
-        configure_dspy(model, console)
+        # Configure DSPy
+        configure_dspy(model)
 
-        analyzer = ProjectAnalyzer(project_root, console)
-        project_context = analyzer.analyze()
+        # Initialize services
+        file_reader = FileReader()
+        cli_runner = CLIRunner()
 
-        console.print("[bold blue]Starting README generation pipeline...[/bold blue]")
+        # Analyze project
+        console.print("[dim]Analyzing project structure...[/dim]")
+        analyzer = ProjectAnalyzer(project_root, file_reader, cli_runner, console)
+
+        # Extract metadata
+        metadata = analyzer.extract_project_metadata()
+        logger.info(f"Extracted metadata for project: {metadata.name}")
+
+        # Analyze source files
+        source_analyses = analyzer.analyze_all_source_files()
+        logger.info(f"Analyzed {len(source_analyses)} source files")
+
+        # Get CLI help
+        cli_help_text = analyzer.get_cli_help()
+
+        # Read additional files
+        makefile_content = file_reader.read_file(project_root / "Makefile")
+        pyproject_content = file_reader.read_file(project_root / "pyproject.toml")
+
+        # Read Python version if available
+        python_version = None
+        python_version_file = project_root / ".python-version"
+        if file_reader.file_exists(python_version_file):
+            python_version = file_reader.read_file(python_version_file).strip()
+
+        # Extract context
+        console.print("[bold blue]Extracting project context...[/bold blue]")
+        context_extractor = ContextExtractor()
+        context = context_extractor(
+            metadata=metadata,
+            source_analyses=source_analyses,
+            makefile_content=makefile_content,
+            pyproject_content=pyproject_content,
+            cli_help_text=cli_help_text,
+            python_version=python_version
+        )
+
+        logger.info(f"Extracted context - Package manager: {context.environment.package_manager}")
+        logger.info(f"Available commands: {list(context.environment.available_commands.keys())}")
+
+        # Generate README
+        console.print("[bold green]Generating README content...[/bold green]")
         readme_generator = ReadmeGenerator()
-        with console.status("[bold green]Synthesizing README with DSPy...[/]", spinner="dots"):
-            prediction = readme_generator(project_context=project_context)
-        console.print("[green]✓ Generation pipeline complete.[/green]")
 
+        with console.status("[bold green]Synthesizing README with DSPy...[/]", spinner="dots"):
+            result = readme_generator(context=context)
+
+        console.print("[green]✓ Generation complete.[/green]")
+
+        # Write output
         console.print(f"[dim]Writing output to [bold]{output}[/bold]...[/dim]")
-        output.write_text(prediction.readme_content, encoding="utf-8")
+        output.write_text(result.readme_content, encoding="utf-8")
+
+        console.print(f"\n[bold green]✅ README successfully generated at: {output}[/bold green]")
 
     except Exception as e:
-        console.print(f"\n[bold red]❌ An unexpected error occurred:[/bold red]\n{e}")
+        logger.error(f"Generation failed: {e}", exc_info=True)
+        console.print(f"\n[bold red]❌ An error occurred:[/bold red]\n{e}")
         raise typer.Exit(code=1)
-
-    console.print(
-        f"\n[bold green]✅ README successfully generated at: {output}[/bold green]"
-    )
 
 
 if __name__ == "__main__":
