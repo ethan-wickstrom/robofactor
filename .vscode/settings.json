@@ -1,5 +1,5 @@
 {
-  "python.languageServer": "Default",
+  "python.languageServer": "None",
   "windsurfPyright.analysis.typeCheckingMode": "basedpyright",
   "editor.defaultFormatter": "Codeium.windsurfPyright",
   "windsurfPyright.analysis.autoSearchPaths": true,
