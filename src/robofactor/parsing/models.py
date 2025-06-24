@@ -22,7 +22,7 @@ class CodeQualityScores(BaseModel):
     complexity_score: float
     typing_score: float
     docstring_score: float
-    linting_issues: Sequence[str] = Field(default_factory=list)
+    linting_issues: Sequence[str] = Field(default_factory=Sequence)
 
 
 class ParameterKind(enum.Enum):

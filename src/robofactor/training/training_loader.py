@@ -30,7 +30,7 @@ def is_training_item(x: JSON) -> TypeGuard[JSONObject]:
     )
 
 
-def load_training_data() -> Sequence[dspy.Example]:
+def load_training_data() -> list[dspy.Example]:
     data_path = Path(__file__).parent / TRAINING_DATA_FILE
     try:
         # CAST the untyped json.loads → JSON
@@ -47,7 +47,7 @@ def load_training_data() -> Sequence[dspy.Example]:
         logger.error(f"Expected top-level array, got {type(raw).__name__}")
         return []
 
-    items: Sequence[dspy.Example] = []
+    items: list[dspy.Example] = []
     for idx, entry in enumerate(raw):
         if not is_training_item(entry):
             logger.error(f"Invalid training entry at index {idx}: {entry!r}")

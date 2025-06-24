@@ -24,8 +24,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 try:
     project_root = Path(__file__).parent.parent.resolve()
     sys.path.insert(0, str(project_root / "src"))
-    from robofactor.function_extraction import parse_python_source
-    from robofactor.main import app as cli_app
+    from robofactor.parsing.ast_parser import parse_python_source
+    from robofactor.app.main import app as cli_app
     from robofactor.utils import suppress_pydantic_warnings
 except ImportError as e:
     print(
@@ -80,11 +80,16 @@ class ProjectMetadata(BaseModel):
 class DevelopmentEnvironment(BaseModel):
     """Extracted development environment information."""
 
-    package_manager: str = Field(description="The package manager used (e.g., uv, pip, poetry)")
+    package_manager: str = Field(
+        description="The package manager used (e.g., uv, pip, poetry)"
+    )
     install_command: str = Field(description="Command to install the package")
-    dev_install_command: str = Field(description="Command to install with dev dependencies")
+    dev_install_command: str = Field(
+        description="Command to install with dev dependencies"
+    )
     available_commands: dict[str, str] = Field(
-        default_factory=dict, description="Available make/task commands and their descriptions"
+        default_factory=dict,
+        description="Available make/task commands and their descriptions",
     )
     python_version: str | None = None
 
@@ -93,7 +98,9 @@ class ProjectFeatures(BaseModel):
     """High-level features extracted from the project."""
 
     core_technologies: list[str] = Field(description="Main technologies/libraries used")
-    cli_capabilities: list[str] = Field(description="CLI commands and options available")
+    cli_capabilities: list[str] = Field(
+        description="CLI commands and options available"
+    )
     key_modules: dict[str, str] = Field(
         description="Key modules and their purposes", default_factory=dict
     )
@@ -292,7 +299,9 @@ class ExtractPackageManager(dspy.Signature):
     package_manager: str = dspy.OutputField(
         desc="The package manager used (e.g., 'uv', 'pip', 'poetry')"
     )
-    install_command: str = dspy.OutputField(desc="The exact command to install the package")
+    install_command: str = dspy.OutputField(
+        desc="The exact command to install the package"
+    )
     dev_install_command: str = dspy.OutputField(
         desc="The exact command to install with dev dependencies"
     )
@@ -339,7 +348,9 @@ class AssembleReadme(dspy.Signature):
     project_name: str = dspy.InputField()
     project_description: str = dspy.InputField()
     sections: list[GeneratedSection] = dspy.InputField()
-    readme_content: str = dspy.OutputField(desc="Complete README.md content with proper formatting")
+    readme_content: str = dspy.OutputField(
+        desc="Complete README.md content with proper formatting"
+    )
 
 
 # --- DSPy Modules ---
@@ -384,7 +395,9 @@ class ContextExtractor(dspy.Module):
 
         # Extract project features
         features_result = self.features_extractor(
-            metadata=metadata, source_analyses=source_analyses, cli_help_text=cli_help_text
+            metadata=metadata,
+            source_analyses=source_analyses,
+            cli_help_text=cli_help_text,
         )
 
         return ExtractedContext(
@@ -531,14 +544,20 @@ def generate(
             python_version=python_version,
         )
 
-        logger.info(f"Extracted context - Package manager: {context.environment.package_manager}")
-        logger.info(f"Available commands: {list(context.environment.available_commands.keys())}")
+        logger.info(
+            f"Extracted context - Package manager: {context.environment.package_manager}"
+        )
+        logger.info(
+            f"Available commands: {list(context.environment.available_commands.keys())}"
+        )
 
         # Generate README
         console.print("[bold green]Generating README content...[/bold green]")
         readme_generator = ReadmeGenerator()
 
-        with console.status("[bold green]Synthesizing README with DSPy...[/]", spinner="dots"):
+        with console.status(
+            "[bold green]Synthesizing README with DSPy...[/]", spinner="dots"
+        ):
             result = readme_generator(context=context)
 
         console.print("[green]✓ Generation complete.[/green]")
@@ -547,7 +566,9 @@ def generate(
         console.print(f"[dim]Writing output to [bold]{output}[/bold]...[/dim]")
         output.write_text(result.readme_content, encoding="utf-8")
 
-        console.print(f"\n[bold green]✅ README successfully generated at: {output}[/bold green]")
+        console.print(
+            f"\n[bold green]✅ README successfully generated at: {output}[/bold green]"
+        )
 
     except Exception as e:
         logger.error(f"Generation failed: {e}", exc_info=True)

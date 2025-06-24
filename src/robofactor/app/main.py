@@ -26,12 +26,16 @@ from robofactor.training.training_loader import load_training_data
 app = typer.Typer()
 
 
-def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
+def _setup_environment(
+    tracing: bool, mlflow_uri: str, mlflow_experiment: str
+) -> Console:
     """Configures warnings, MLflow, and returns a rich Console."""
     utils.suppress_pydantic_warnings()
     console = Console()
     if tracing:
-        console.print(f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]")
+        console.print(
+            f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]"
+        )
         mlflow.set_tracking_uri(mlflow_uri)
         _ = mlflow.set_experiment(mlflow_experiment)
         _ = mlflow.autolog()
@@ -66,7 +70,9 @@ def _load_or_compile_model(
             num_threads=8,
         )
         teleprompter.compile(
-            refactorer, trainset=list(load_training_data()), requires_permission_to_run=False
+            refactorer,
+            trainset=load_training_data(),
+            requires_permission_to_run=False,
         )
         console.print(f"Optimization complete. Saving to {optimizer_path}...")
         self_correcting_refactorer.save(str(optimizer_path), save_program=True)
@@ -87,15 +93,17 @@ def _run_refactoring_on_file(
 
     console.print(
         Panel(
-            Syntax(source_code, "python", theme=config.RICH_SYNTAX_THEME, line_numbers=True),
+            Syntax(
+                source_code, "python", theme=config.RICH_SYNTAX_THEME, line_numbers=True
+            ),
             title=f"[bold]Original Code: {script_path.name}[/bold]",
             border_style="blue",
         )
     )
 
-    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
-        "code_snippet"
-    )
+    refactor_example = dspy.Example(
+        code_snippet=source_code, test_cases=[]
+    ).with_inputs("code_snippet")
     prediction = refactorer(**refactor_example.inputs())
     ui.display_refactoring_process(console, prediction)
 
@@ -113,7 +121,9 @@ def _run_refactoring_on_file(
                     f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]"
                 )
                 _ = script_path.write_text(refactored_code, encoding="utf-8")
-                console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
+                console.print(
+                    f"[green]Refactoring of {script_path.name} complete.[/green]"
+                )
         case Failure(error_message):
             console.print(
                 Panel(
@@ -159,7 +169,9 @@ def main(
         "--prompt-llm",
         help="Model for generating prompts during optimization.",
     ),
-    tracing: bool = typer.Option(True, "--tracing/--no-tracing", help="Enable MLflow tracing."),
+    tracing: bool = typer.Option(
+        True, "--tracing/--no-tracing", help="Enable MLflow tracing."
+    ),
     mlflow_uri: str = typer.Option(
         config.DEFAULT_MLFLOW_TRACKING_URI,
         "--mlflow-uri",
