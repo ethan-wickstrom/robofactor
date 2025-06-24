@@ -5,6 +5,7 @@ Intelligent README generator for the robofactor project.
 This module uses DSPy with Pydantic integration to analyze the project structure
 and generate a comprehensive README based on extracted information rather than assumptions.
 """
+
 from __future__ import annotations
 
 import logging
@@ -35,13 +36,17 @@ except ImportError as e:
     sys.exit(1)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # --- Data Models (Pydantic) ---
 
+
 class FunctionMetadata(BaseModel):
     """Metadata about a function extracted from source code."""
+
     name: str
     file_path: str
     docstring: str | None
@@ -52,6 +57,7 @@ class FunctionMetadata(BaseModel):
 
 class SourceFileAnalysis(BaseModel):
     """Analysis of a single source file."""
+
     relative_path: str
     functions: list[FunctionMetadata]
     imports: list[str] = Field(default_factory=list)
@@ -60,6 +66,7 @@ class SourceFileAnalysis(BaseModel):
 
 class ProjectMetadata(BaseModel):
     """Basic project metadata from pyproject.toml."""
+
     name: str
     description: str
     version: str | None = None
@@ -72,23 +79,23 @@ class ProjectMetadata(BaseModel):
 
 class DevelopmentEnvironment(BaseModel):
     """Extracted development environment information."""
+
     package_manager: str = Field(description="The package manager used (e.g., uv, pip, poetry)")
     install_command: str = Field(description="Command to install the package")
     dev_install_command: str = Field(description="Command to install with dev dependencies")
     available_commands: dict[str, str] = Field(
-        default_factory=dict,
-        description="Available make/task commands and their descriptions"
+        default_factory=dict, description="Available make/task commands and their descriptions"
     )
     python_version: str | None = None
 
 
 class ProjectFeatures(BaseModel):
     """High-level features extracted from the project."""
+
     core_technologies: list[str] = Field(description="Main technologies/libraries used")
     cli_capabilities: list[str] = Field(description="CLI commands and options available")
     key_modules: dict[str, str] = Field(
-        description="Key modules and their purposes",
-        default_factory=dict
+        description="Key modules and their purposes", default_factory=dict
     )
     testing_framework: str | None = None
     code_quality_tools: list[str] = Field(default_factory=list)
@@ -96,6 +103,7 @@ class ProjectFeatures(BaseModel):
 
 class ExtractedContext(BaseModel):
     """Complete extracted context for README generation."""
+
     metadata: ProjectMetadata
     environment: DevelopmentEnvironment
     features: ProjectFeatures
@@ -105,6 +113,7 @@ class ExtractedContext(BaseModel):
 
 class ReadmeSection(BaseModel):
     """A section in the README outline."""
+
     title: str
     description: str
     priority: int = Field(default=5, ge=1, le=10)
@@ -112,24 +121,29 @@ class ReadmeSection(BaseModel):
 
 class GeneratedSection(BaseModel):
     """A generated README section with content."""
+
     title: str
     content: str
 
 
 # --- Service Interfaces (Dependency Injection) ---
 
+
 class FileReaderProtocol(Protocol):
     """Protocol for file reading operations."""
+
     def read_file(self, path: Path) -> str: ...
     def file_exists(self, path: Path) -> bool: ...
 
 
 class CLIRunnerProtocol(Protocol):
     """Protocol for running CLI commands."""
+
     def get_help_text(self) -> str: ...
 
 
 # --- Concrete Service Implementations ---
+
 
 class FileReader:
     """Handles file system operations."""
@@ -157,6 +171,7 @@ class CLIRunner:
         """Get the CLI help text."""
         try:
             from typer.testing import CliRunner
+
             runner = CliRunner()
             result = runner.invoke(cli_app, ["--help"], catch_exceptions=False)
 
@@ -173,6 +188,7 @@ class CLIRunner:
 
 # --- Project Analyzer ---
 
+
 class ProjectAnalyzer:
     """Analyzes project structure and extracts information."""
 
@@ -181,7 +197,7 @@ class ProjectAnalyzer:
         root: Path,
         file_reader: FileReaderProtocol,
         cli_runner: CLIRunnerProtocol,
-        console: Console | None = None
+        console: Console | None = None,
     ):
         self.root = root
         self.file_reader = file_reader
@@ -205,14 +221,13 @@ class ProjectAnalyzer:
                     docstring=f.docstring,
                     is_async=f.is_async,
                     decorators=[d.name for d in f.decorators],
-                    parameters=[p.name for p in f.parameters]
+                    parameters=[p.name for p in f.parameters],
                 )
                 for f in functions
             ]
 
             return SourceFileAnalysis(
-                relative_path=str(path.relative_to(self.root)),
-                functions=func_metadata
+                relative_path=str(path.relative_to(self.root)), functions=func_metadata
             )
         except Exception as e:
             logger.error(f"Failed to parse {path}: {e}")
@@ -237,7 +252,7 @@ class ProjectAnalyzer:
             dependencies=deps,
             dev_dependencies=dev_deps,
             homepage=urls.get("Homepage"),
-            repository=urls.get("Repository")
+            repository=urls.get("Repository"),
         )
 
     def analyze_all_source_files(self) -> list[SourceFileAnalysis]:
@@ -268,21 +283,16 @@ class ProjectAnalyzer:
 
 # --- DSPy Signatures with Pydantic ---
 
+
 class ExtractPackageManager(dspy.Signature):
     """Extract the package manager and installation commands from project files."""
 
-    makefile_content: str = dspy.InputField(
-        desc="Content of the Makefile"
-    )
-    pyproject_content: str = dspy.InputField(
-        desc="Content of pyproject.toml"
-    )
+    makefile_content: str = dspy.InputField(desc="Content of the Makefile")
+    pyproject_content: str = dspy.InputField(desc="Content of pyproject.toml")
     package_manager: str = dspy.OutputField(
         desc="The package manager used (e.g., 'uv', 'pip', 'poetry')"
     )
-    install_command: str = dspy.OutputField(
-        desc="The exact command to install the package"
-    )
+    install_command: str = dspy.OutputField(desc="The exact command to install the package")
     dev_install_command: str = dspy.OutputField(
         desc="The exact command to install with dev dependencies"
     )
@@ -291,9 +301,7 @@ class ExtractPackageManager(dspy.Signature):
 class ExtractDevelopmentCommands(dspy.Signature):
     """Extract available development commands from Makefile."""
 
-    makefile_content: str = dspy.InputField(
-        desc="Content of the Makefile"
-    )
+    makefile_content: str = dspy.InputField(desc="Content of the Makefile")
     commands: dict[str, str] = dspy.OutputField(
         desc="Dictionary mapping command names to their descriptions"
     )
@@ -322,9 +330,7 @@ class GenerateSectionContent(dspy.Signature):
 
     context: ExtractedContext = dspy.InputField()
     section: ReadmeSection = dspy.InputField()
-    content: str = dspy.OutputField(
-        desc="Markdown content for this section"
-    )
+    content: str = dspy.OutputField(desc="Markdown content for this section")
 
 
 class AssembleReadme(dspy.Signature):
@@ -333,12 +339,11 @@ class AssembleReadme(dspy.Signature):
     project_name: str = dspy.InputField()
     project_description: str = dspy.InputField()
     sections: list[GeneratedSection] = dspy.InputField()
-    readme_content: str = dspy.OutputField(
-        desc="Complete README.md content with proper formatting"
-    )
+    readme_content: str = dspy.OutputField(desc="Complete README.md content with proper formatting")
 
 
 # --- DSPy Modules ---
+
 
 class ContextExtractor(dspy.Module):
     """Extracts specific context from project files."""
@@ -356,20 +361,17 @@ class ContextExtractor(dspy.Module):
         makefile_content: str,
         pyproject_content: str,
         cli_help_text: str,
-        python_version: str | None = None
+        python_version: str | None = None,
     ) -> ExtractedContext:
         """Extract all context from project files."""
 
         # Extract package manager and install commands
         pkg_result = self.package_extractor(
-            makefile_content=makefile_content,
-            pyproject_content=pyproject_content
+            makefile_content=makefile_content, pyproject_content=pyproject_content
         )
 
         # Extract development commands
-        cmd_result = self.commands_extractor(
-            makefile_content=makefile_content
-        )
+        cmd_result = self.commands_extractor(makefile_content=makefile_content)
 
         # Create development environment
         environment = DevelopmentEnvironment(
@@ -377,14 +379,12 @@ class ContextExtractor(dspy.Module):
             install_command=pkg_result.install_command,
             dev_install_command=pkg_result.dev_install_command,
             available_commands=cmd_result.commands,
-            python_version=python_version
+            python_version=python_version,
         )
 
         # Extract project features
         features_result = self.features_extractor(
-            metadata=metadata,
-            source_analyses=source_analyses,
-            cli_help_text=cli_help_text
+            metadata=metadata, source_analyses=source_analyses, cli_help_text=cli_help_text
         )
 
         return ExtractedContext(
@@ -392,7 +392,7 @@ class ContextExtractor(dspy.Module):
             environment=environment,
             features=features_result.features,
             source_analyses=source_analyses,
-            cli_help_text=cli_help_text
+            cli_help_text=cli_help_text,
         )
 
 
@@ -415,28 +415,22 @@ class ReadmeGenerator(dspy.Module):
         # Generate content for each section
         generated_sections = []
         for section in sections:
-            section_result = self.section_generator(
-                context=context,
-                section=section
-            )
+            section_result = self.section_generator(context=context, section=section)
             generated_sections.append(
-                GeneratedSection(
-                    title=section.title,
-                    content=section_result.content
-                )
+                GeneratedSection(title=section.title, content=section_result.content)
             )
 
         # Assemble final README
         final_result = self.assembler(
             project_name=context.metadata.name,
             project_description=context.metadata.description,
-            sections=generated_sections
+            sections=generated_sections,
         )
 
         return dspy.Prediction(
             outline=sections,
             generated_sections=generated_sections,
-            readme_content=final_result.readme_content
+            readme_content=final_result.readme_content,
         )
 
 
@@ -534,7 +528,7 @@ def generate(
             makefile_content=makefile_content,
             pyproject_content=pyproject_content,
             cli_help_text=cli_help_text,
-            python_version=python_version
+            python_version=python_version,
         )
 
         logger.info(f"Extracted context - Package manager: {context.environment.package_manager}")
