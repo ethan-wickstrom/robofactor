@@ -1,0 +1,202 @@
+# [!SYSTEM] INSTRUCTIONS
+
+## Type System and Imports
+
+- Always use `Sequence` over list; GOOD: always use `Sequence` by importing using `from collections.abc import Sequence` and BAD: never import using `from typing import Sequence`
+- Always use `Mapping` over `dict`; GOOD: always use `Mapping` by importing using `from collections.abc import Mapping` and BAD: never import using `from typing import Mapping`
+- Always use `Result` over `Optional` or `None`; GOOD: always use `Result` by importing using `from returns.result import Result` and BAD: never import using `from typing import Optional` or `None`
+- Prefer `Callable` over `typing.Callable`; GOOD: always use `Callable` by importing using `from collections.abc import Callable` and BAD: never import using `from typing import Callable`
+- Use `Iterable` for read-only iteration; GOOD: always use `Iterable` by importing using `from collections.abc import Iterable` and BAD: never import using `from typing import Iterable`
+- Avoid `Any`; use explicit types or `TypeVar`; GOOD: always use specific types and BAD: never import using `from typing import Any`
+- Use `TypeVar` for generic type parameters; GOOD: `T = TypeVar('T')` and BAD: never use `Any` as a generic placeholder
+- Always use `Final` for constants; GOOD: `from typing import Final` then `MAX_RETRIES: Final[int] = 3` and BAD: never use mutable constants
+- Use `Literal` for specific string/int values; GOOD: `from typing import Literal` then `Mode = Literal['read', 'write']` and BAD: never use plain `str` for enums
+- Always prefer `TypeAlias` for complex types; GOOD: `from typing import TypeAlias` then `UserID: TypeAlias = int` and BAD: never repeat complex type annotations
+- Use `Protocol` for structural subtyping; GOOD: `from typing import Protocol` for interfaces and BAD: never use ABC classes just for typing
+- Always use `TypedDict` for structured dicts; GOOD: `from typing import TypedDict` and BAD: never use `dict[str, Any]`
+- Prefer `frozenset` over `set` for immutable collections; GOOD: `frozenset({1, 2, 3})` and BAD: avoid mutable sets in function returns
+- Use `tuple` for fixed-length sequences; GOOD: `tuple[int, str, bool]` and BAD: never use `list` for fixed-size data
+- Always specify variance in TypeVars; GOOD: `TypeVar('T', covariant=True)` when appropriate and BAD: never leave variance implicit
+- Use `NewType` for semantic distinctions; GOOD: `UserId = NewType('UserId', int)` and BAD: never conflate different semantic types
+
+## CLI and Command Line Tools
+
+- For CLIs, always use Typer; GOOD: always use `typer` by importing using `import typer` and BAD: never import using `import click`
+- When using Annotated, never put the default value in Option(); only use it as the parameter default
+- Always use Annotated for CLI parameters; GOOD: `name: Annotated[str, typer.Option("--name")]` and BAD: never use direct assignment
+- Group related commands using Typer sub-apps; GOOD: `app.add_typer(users_app, name="users")` and BAD: never have flat command structures
+- Always provide help text for commands and options; GOOD: `typer.Option(help="User name")` and BAD: never leave options undocumented
+- Use rich for enhanced CLI output; GOOD: `from rich.console import Console` and BAD: never use plain print for complex output
+- Implement proper exit codes; GOOD: `raise typer.Exit(code=1)` and BAD: never use `sys.exit()` in CLI commands
+- Always validate CLI inputs early; GOOD: validate in the command function and BAD: never defer validation to business logic
+- Use typer.echo for output; GOOD: `typer.echo("message")` and BAD: never use print() in CLI commands
+- Provide shell completion; GOOD: implement custom completion functions and BAD: never ignore shell integration
+
+## Error Handling and Result Types
+
+- Always use Result for fallible operations; GOOD: `Result[Success, Error]` and BAD: never throw exceptions for expected errors
+- Chain Results with map/bind; GOOD: `result.map(transform).bind(validate)` and BAD: never unwrap Results prematurely
+- Use specific error types; GOOD: `Result[User, UserNotFoundError]` and BAD: never use generic `Exception`
+- Always handle both Success and Failure cases; GOOD: pattern match or use `result.fold()` and BAD: never ignore error cases
+- Create error hierarchies with dataclasses; GOOD: `@dataclass class ValidationError` and BAD: never use string errors
+- Use `returns.maybe.Maybe` for nullable values; GOOD: `Maybe[User]` and BAD: never use raw `None`
+- Compose error-prone operations; GOOD: `returns.pipeline.pipe` and BAD: never nest try-except blocks
+- Log errors at boundaries only; GOOD: log at service edges and BAD: never log deep in business logic
+- Always provide error context; GOOD: include relevant ids/values in errors and BAD: never raise context-free errors
+- Use `returns.io.IO` for side effects; GOOD: `IO[str]` for file reads and BAD: never perform I/O in pure functions
+
+## Function Design and Composition
+
+- Keep functions under 20 lines; GOOD: extract helper functions and BAD: never write long procedural functions
+- Single responsibility per function; GOOD: one clear purpose and BAD: never mix concerns
+- Use descriptive names; GOOD: `calculate_tax_rate()` and BAD: never use `calc()` or `process()`
+- Parameters should be immutable; GOOD: accept `Sequence` and BAD: never mutate input parameters
+- Return new values; GOOD: `return dataclasses.replace(obj, field=new_value)` and BAD: never modify and return same object
+- Limit function parameters to 4; GOOD: use parameter objects and BAD: never have functions with 7+ parameters
+- Always type annotate; GOOD: full annotations for params and returns and BAD: never rely on type inference
+- Use keyword-only arguments; GOOD: `def fn(*, name: str)` and BAD: never rely on positional args for clarity
+- Compose small functions; GOOD: `pipe(data, parse, validate, transform)` and BAD: never write monolithic functions
+- Cache pure computations; GOOD: `@functools.cache` for expensive pure functions and BAD: never recompute identical results
+
+## Data Structures and Immutability
+
+- Always use frozen dataclasses; GOOD: `@dataclass(frozen=True)` and BAD: never use mutable dataclasses
+- Prefer immutable collections; GOOD: `tuple`, `frozenset`, `MappingProxyType` and BAD: avoid `list`, `set`, `dict` in APIs
+- Use `copy.deepcopy` sparingly; GOOD: design for immutability and BAD: never rely on deep copying for safety
+- Return new instances; GOOD: `dataclasses.replace()` and BAD: never mutate and return
+- Use `__slots__` for performance; GOOD: `__slots__ = ('x', 'y')` in classes and BAD: never ignore memory efficiency
+- Implement `__eq__` and `__hash__` properly; GOOD: use `@dataclass` or implement both and BAD: never implement just one
+- Use enums for fixed choices; GOOD: `class Status(Enum)` and BAD: never use string constants
+- Design algebraic data types; GOOD: sum types with Union and BAD: never use inheritance for variants
+- Validate at construction; GOOD: `__post_init__` validation and BAD: never allow invalid states
+- Use builders for complex objects; GOOD: builder pattern with validation and BAD: never use complex constructors
+
+## Testing and Validation
+
+- Write tests first; GOOD: TDD approach and BAD: never write tests after implementation
+- One assertion per test; GOOD: focused test cases and BAD: never test multiple behaviors
+- Use descriptive test names; GOOD: `test_calculate_tax_returns_zero_for_negative_income` and BAD: never use `test_1`
+- Test edge cases; GOOD: empty, null, boundary values and BAD: never test only happy path
+- Use property-based testing; GOOD: `hypothesis` for invariants and BAD: never rely only on examples
+- Mock at boundaries; GOOD: mock external services and BAD: never mock internal functions
+- Use fixtures properly; GOOD: `@pytest.fixture` for reusable setup and BAD: never duplicate test setup
+- Test error conditions; GOOD: verify error types and messages and BAD: never ignore failure cases
+- Keep tests independent; GOOD: each test runs in isolation and BAD: never depend on test order
+- Use test doubles correctly; GOOD: stubs for queries, mocks for commands and BAD: never overuse mocks
+
+## Code Organization and Architecture
+
+- One module per concept; GOOD: `user.py`, `payment.py` and BAD: never have `utils.py` or `helpers.py`
+- Clear module boundaries; GOOD: explicit public APIs and BAD: never expose internals
+- Use `__init__.py` wisely; GOOD: re-export public API and BAD: never leave empty
+- Separate concerns; GOOD: business logic, I/O, presentation and BAD: never mix layers
+- Dependency injection; GOOD: pass dependencies explicitly and BAD: never use global state
+- Use protocols for dependencies; GOOD: depend on protocols and BAD: never depend on concrete types
+- Group by feature; GOOD: `features/user/`, `features/payment/` and BAD: never group by type
+- Keep imports at top; GOOD: standard, third-party, local order and BAD: never import inside functions
+- Use relative imports carefully; GOOD: absolute for public API and BAD: never use relative in public modules
+- Define clear interfaces; GOOD: protocol or ABC at module boundary and BAD: never leak implementation
+
+## Performance and Optimization
+
+- Measure before optimizing; GOOD: use profiling tools and BAD: never optimize prematurely
+- Use generators for large datasets; GOOD: `yield` for streaming and BAD: never load everything in memory
+- Cache expensive computations; GOOD: `@lru_cache` or `@cache` and BAD: never recompute unchanged results
+- Use appropriate data structures; GOOD: `set` for membership, `deque` for queues and BAD: never use wrong structure
+- Batch I/O operations; GOOD: bulk reads/writes and BAD: never do I/O in loops
+- Use `__slots__` for many instances; GOOD: memory efficiency and BAD: never ignore memory usage
+- Prefer `bisect` for sorted data; GOOD: O(log n) operations and BAD: never linear search sorted data
+- Use `itertools` effectively; GOOD: `chain`, `groupby`, etc. and BAD: never reinvent iterations
+- Compile regex once; GOOD: `PATTERN = re.compile()` and BAD: never compile in loops
+- Use numpy for numerical work; GOOD: vectorized operations and BAD: never loop over arrays
+
+## Async and Concurrency
+
+- Use async for I/O bound tasks; GOOD: `async def` for I/O and BAD: never block event loop
+- Prefer asyncio over threading; GOOD: async/await pattern and BAD: never use threads for I/O
+- Use `asyncio.gather` for parallel tasks; GOOD: concurrent execution and BAD: never await sequentially
+- Handle async errors properly; GOOD: try/except in async and BAD: never ignore async exceptions
+- Use async context managers; GOOD: `async with` for resources and BAD: never leak async resources
+- Limit concurrent operations; GOOD: use semaphores and BAD: never overwhelm resources
+- Use `asyncio.create_task` wisely; GOOD: for fire-and-forget and BAD: never lose task references
+- Test async code properly; GOOD: `pytest-asyncio` and BAD: never test async as sync
+- Avoid blocking calls; GOOD: use async libraries and BAD: never call blocking functions in async
+- Use queues for task distribution; GOOD: `asyncio.Queue` and BAD: never share mutable state
+
+## Documentation and Comments
+
+- Write docstrings for public APIs; GOOD: Google/NumPy style and BAD: never leave public functions undocumented
+- Document why, not what; GOOD: explain decisions and BAD: never state the obvious
+- Keep docs in sync; GOOD: update with code and BAD: never have outdated docs
+- Use type hints as documentation; GOOD: self-documenting types and BAD: never rely only on docstrings
+- Document exceptions; GOOD: list raised exceptions and BAD: never hide error conditions
+- Provide examples; GOOD: doctest examples and BAD: never have abstract docs only
+- Link to references; GOOD: cite algorithms/papers and BAD: never leave knowledge implicit
+- Document assumptions; GOOD: state preconditions and BAD: never assume context
+- Use meaningful variable names; GOOD: self-documenting code and BAD: never use cryptic names
+- Keep README updated; GOOD: current setup/usage and BAD: never have stale instructions
+
+## Security and Safety
+
+- Validate all inputs; GOOD: whitelist validation and BAD: never trust user input
+- Use parameterized queries; GOOD: prepared statements and BAD: never concatenate SQL
+- Hash passwords properly; GOOD: bcrypt/argon2 and BAD: never store plain text
+- Use secrets management; GOOD: environment variables and BAD: never hardcode secrets
+- Implement rate limiting; GOOD: protect endpoints and BAD: never allow unlimited requests
+- Log security events; GOOD: audit trail and BAD: never ignore suspicious activity
+- Use HTTPS everywhere; GOOD: TLS for all connections and BAD: never send data unencrypted
+- Validate file uploads; GOOD: check type/size and BAD: never trust file extensions
+- Implement CSRF protection; GOOD: tokens for state changes and BAD: never rely on cookies alone
+- Keep dependencies updated; GOOD: regular updates and BAD: never ignore security advisories
+
+## Logging and Monitoring
+
+- Use structured logging; GOOD: JSON logs with context and BAD: never use print statements
+- Log at appropriate levels; GOOD: ERROR for errors, INFO for events and BAD: never log everything as DEBUG
+- Include correlation IDs; GOOD: trace requests and BAD: never log without context
+- Log at boundaries; GOOD: entry/exit points and BAD: never log in business logic
+- Avoid logging sensitive data; GOOD: mask PII and BAD: never log passwords/tokens
+- Use log aggregation; GOOD: centralized logging and BAD: never rely on local logs
+- Set up alerts; GOOD: monitor error rates and BAD: never ignore errors
+- Log performance metrics; GOOD: timing, counts and BAD: never fly blind
+- Implement health checks; GOOD: `/health` endpoint and BAD: never assume service health
+- Use distributed tracing; GOOD: trace across services and BAD: never lose request context
+
+## Database and Persistence
+
+- Use migrations; GOOD: version control schema and BAD: never modify schema manually
+- Write idempotent migrations; GOOD: safe to rerun and BAD: never assume migration state
+- Use transactions properly; GOOD: ACID guarantees and BAD: never leave data inconsistent
+- Implement retry logic; GOOD: handle transient failures and BAD: never fail on first error
+- Use connection pooling; GOOD: reuse connections and BAD: never create per-request
+- Index foreign keys; GOOD: performance optimization and BAD: never ignore query patterns
+- Use EXPLAIN for queries; GOOD: understand performance and BAD: never deploy untested queries
+- Implement soft deletes; GOOD: audit trail and BAD: never lose data permanently
+- Use read replicas; GOOD: scale read operations and BAD: never overload primary
+- Backup regularly; GOOD: automated backups and BAD: never rely on manual process
+
+## API Design
+
+- Use consistent naming; GOOD: REST conventions and BAD: never mix styles
+- Version your APIs; GOOD: `/v1/`, `/v2/` and BAD: never break clients
+- Use proper HTTP methods; GOOD: GET for reads, POST for creates and BAD: never use GET for mutations
+- Return appropriate status codes; GOOD: 201 for created, 404 for not found and BAD: never return 200 for errors
+- Implement pagination; GOOD: limit/offset or cursor and BAD: never return unbounded lists
+- Use content negotiation; GOOD: Accept headers and BAD: never hardcode formats
+- Implement rate limiting; GOOD: protect resources and BAD: never allow abuse
+- Document with OpenAPI; GOOD: machine-readable specs and BAD: never rely on prose
+- Use HATEOAS principles; GOOD: discoverable APIs and BAD: never require hardcoded URLs
+- Implement idempotency; GOOD: safe retries and BAD: never have side effects on retry
+
+## Refactoring and Maintenance
+
+- Refactor in small steps; GOOD: incremental changes and BAD: never big bang refactors
+- Keep tests green; GOOD: refactor with confidence and BAD: never break tests
+- Use feature flags; GOOD: gradual rollout and BAD: never deploy all at once
+- Document refactoring decisions; GOOD: ADRs and BAD: never lose context
+- Remove dead code; GOOD: clean as you go and BAD: never leave commented code
+- Update dependencies gradually; GOOD: one at a time and BAD: never update all at once
+- Use deprecation warnings; GOOD: give users time and BAD: never break without warning
+- Measure impact; GOOD: performance metrics and BAD: never assume improvement
+- Refactor tests too; GOOD: maintain test quality and BAD: never let tests rot
+- Keep refactoring atomic; GOOD: one concept per commit and BAD: never mix refactors with features
