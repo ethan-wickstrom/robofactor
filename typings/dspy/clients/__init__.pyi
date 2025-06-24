@@ -17,15 +17,7 @@ from dspy.clients.provider import Provider, TrainingJob
 logger = ...
 DISK_CACHE_DIR = ...
 DISK_CACHE_LIMIT = ...
-
-def configure_cache(
-    enable_disk_cache: Optional[bool] = ...,
-    enable_memory_cache: Optional[bool] = ...,
-    disk_cache_dir: Optional[str] = ...,
-    disk_size_limit_bytes: Optional[int] = ...,
-    memory_max_entries: Optional[int] = ...,
-    enable_litellm_cache: bool = ...,
-):  # -> None:
+def configure_cache(enable_disk_cache: Optional[bool] = ..., enable_memory_cache: Optional[bool] = ..., disk_cache_dir: Optional[str] = ..., disk_size_limit_bytes: Optional[int] = ..., memory_max_entries: Optional[int] = ..., enable_litellm_cache: bool = ...): # -> None:
     """Configure the cache for DSPy.
 
     Args:
@@ -39,21 +31,12 @@ def configure_cache(
     ...
 
 DSPY_CACHE = ...
-if "LITELLM_LOCAL_MODEL_COST_MAP" not in os.environ: ...
-
-def enable_litellm_logging():  # -> None:
+if "LITELLM_LOCAL_MODEL_COST_MAP" not in os.environ:
     ...
-def disable_litellm_logging():  # -> None:
+def enable_litellm_logging(): # -> None:
     ...
 
-__all__ = [
-    "BaseLM",
-    "LM",
-    "Provider",
-    "TrainingJob",
-    "inspect_history",
-    "Embedder",
-    "enable_litellm_logging",
-    "disable_litellm_logging",
-    "configure_cache",
-]
+def disable_litellm_logging(): # -> None:
+    ...
+
+__all__ = ["BaseLM", "LM", "Provider", "TrainingJob", "inspect_history", "Embedder", "enable_litellm_logging", "disable_litellm_logging", "configure_cache"]

@@ -9,27 +9,11 @@ from dspy.utils.callback import BaseCallback
 from .base_lm import BaseLM
 
 logger = ...
-
 class LM(BaseLM):
     """
     A language model supporting chat or text completion requests for use with DSPy modules.
     """
-    def __init__(
-        self,
-        model: str,
-        model_type: Literal["chat", "text"] = ...,
-        temperature: float = ...,
-        max_tokens: int = ...,
-        cache: bool = ...,
-        cache_in_memory: bool = ...,
-        callbacks: Optional[List[BaseCallback]] = ...,
-        num_retries: int = ...,
-        provider=...,
-        finetuning_model: Optional[str] = ...,
-        launch_kwargs: Optional[dict[str, Any]] = ...,
-        train_kwargs: Optional[dict[str, Any]] = ...,
-        **kwargs,
-    ) -> None:
+    def __init__(self, model: str, model_type: Literal["chat", "text"] = ..., temperature: float = ..., max_tokens: int = ..., cache: bool = ..., cache_in_memory: bool = ..., callbacks: Optional[List[BaseCallback]] = ..., num_retries: int = ..., provider: Optional[Provider] = ..., finetuning_model: Optional[str] = ..., launch_kwargs: Optional[dict[str, Any]] = ..., train_kwargs: Optional[dict[str, Any]] = ..., **kwargs) -> None:
         """
         Create a new language model instance for use with DSPy modules and programs.
 
@@ -51,39 +35,42 @@ class LM(BaseLM):
                 from the models available for inference.
         """
         ...
+    
+    def forward(self, prompt=..., messages=..., **kwargs): # -> Any | CoroutineType[Any, Any, Any]:
+        ...
+    
+    async def aforward(self, prompt=..., messages=..., **kwargs): # -> Any:
+        ...
+    
+    def launch(self, launch_kwargs: Optional[Dict[str, Any]] = ...): # -> None:
+        ...
+    
+    def kill(self, launch_kwargs: Optional[Dict[str, Any]] = ...): # -> None:
+        ...
+    
+    def finetune(self, train_data: List[Dict[str, Any]], train_data_format: Optional[TrainDataFormat], train_kwargs: Optional[Dict[str, Any]] = ...) -> TrainingJob:
+        ...
+    
+    def reinforce(self, train_kwargs) -> ReinforceJob:
+        ...
+    
+    def infer_provider(self) -> Provider:
+        ...
+    
+    def dump_state(self): # -> dict[str, Any]:
+        ...
+    
 
-    def forward(self, prompt=..., messages=..., **kwargs):  # -> Any | CoroutineType[Any, Any, Any]:
-        ...
-    async def aforward(self, prompt=..., messages=..., **kwargs):  # -> Any:
-        ...
-    def launch(self, launch_kwargs: Optional[Dict[str, Any]] = ...):  # -> None:
-        ...
-    def kill(self, launch_kwargs: Optional[Dict[str, Any]] = ...):  # -> None:
-        ...
-    def finetune(
-        self,
-        train_data: List[Dict[str, Any]],
-        train_data_format: Optional[TrainDataFormat],
-        train_kwargs: Optional[Dict[str, Any]] = ...,
-    ) -> TrainingJob: ...
-    def reinforce(self, train_kwargs) -> ReinforceJob: ...
-    def infer_provider(self) -> Provider: ...
-    def dump_state(self):  # -> dict[str, Any]:
-        ...
 
-def litellm_completion(
-    request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...
-):  # -> ModelResponse | CustomStreamWrapper | TextCompletionResponse | CoroutineType[Any, Any, ModelResponse | TextCompletionResponse | None] | None:
+def litellm_completion(request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...): # -> ModelResponse | CustomStreamWrapper | TextCompletionResponse | CoroutineType[Any, Any, ModelResponse | TextCompletionResponse | None] | None:
     ...
-def litellm_text_completion(
-    request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...
-):  # -> TextCompletionResponse | ModelResponse | CustomStreamWrapper | TextCompletionStreamWrapper | <subclass of ModelResponse and TextCompletionStreamWrapper> | <subclass of ModelResponse and TextCompletionResponse>:
+
+def litellm_text_completion(request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...): # -> TextCompletionResponse | ModelResponse | CustomStreamWrapper | TextCompletionStreamWrapper | <subclass of ModelResponse and TextCompletionStreamWrapper> | <subclass of ModelResponse and TextCompletionResponse>:
     ...
-async def alitellm_completion(
-    request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...
-):  # -> ModelResponse | CustomStreamWrapper | TextCompletionResponse | None:
+
+async def alitellm_completion(request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...): # -> ModelResponse | CustomStreamWrapper | TextCompletionResponse | None:
     ...
-async def alitellm_text_completion(
-    request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...
-):  # -> TextCompletionResponse | TextCompletionStreamWrapper:
+
+async def alitellm_text_completion(request: Dict[str, Any], num_retries: int, cache: Optional[Dict[str, Any]] = ...): # -> TextCompletionResponse | TextCompletionStreamWrapper:
     ...
+

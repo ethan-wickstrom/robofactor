@@ -38,5 +38,9 @@ class KNN:
             ```
         """
         ...
+    
+    def __call__(self, **kwargs) -> list:
+        ...
+    
 
-    def __call__(self, **kwargs) -> list: ...
+

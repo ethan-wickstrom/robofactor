@@ -6,18 +6,8 @@ from typing import Dict, Optional
 from dspy.teleprompt.teleprompt import Teleprompter
 
 logger = ...
-
 class BootstrapFewShot(Teleprompter):
-    def __init__(
-        self,
-        metric=...,
-        metric_threshold=...,
-        teacher_settings: Optional[Dict] = ...,
-        max_bootstrapped_demos=...,
-        max_labeled_demos=...,
-        max_rounds=...,
-        max_errors=...,
-    ) -> None:
+    def __init__(self, metric=..., metric_threshold=..., teacher_settings: Optional[Dict] = ..., max_bootstrapped_demos=..., max_labeled_demos=..., max_rounds=..., max_errors=...) -> None:
         """A Teleprompter class that composes a set of demos/examples to go into a predictor's prompt.
         These demos come from a combination of labeled examples in the training set, and bootstrapped demos.
 
@@ -35,8 +25,13 @@ class BootstrapFewShot(Teleprompter):
                 Defaults to 16.
             max_rounds (int): Number of iterations to attempt generating the required bootstrap
                 examples. If unsuccessful after `max_rounds`, the program ends. Defaults to 1.
-            max_errors (int): Maximum number of errors until program ends. Defaults to 5.
+            max_errors (Optional[int]): Maximum number of errors until program ends.
+                If ``None``, inherits from ``dspy.settings.max_errors``.
         """
         ...
+    
+    def compile(self, student, *, teacher=..., trainset):
+        ...
+    
 
-    def compile(self, student, *, teacher=..., trainset): ...
+

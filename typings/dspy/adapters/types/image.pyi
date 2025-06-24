@@ -8,35 +8,42 @@ from dspy.adapters.types.base_type import BaseType
 from PIL import Image as PILImage
 
 PIL_AVAILABLE = ...
-
 class Image(BaseType):
     url: str
     model_config = ...
-    def format(self) -> Union[list[dict[str, Any]], str]: ...
+    def format(self) -> Union[list[dict[str, Any]], str]:
+        ...
+    
     @pydantic.model_validator(mode="before")
     @classmethod
-    def validate_input(cls, values):  # -> dict[str, str] | dict[Any, Any] | dict[str, Any]:
+    def validate_input(cls, values): # -> dict[str, str] | dict[Any, Any] | dict[str, Any]:
         ...
+    
     @classmethod
-    def from_url(cls, url: str, download: bool = ...):  # -> Self:
+    def from_url(cls, url: str, download: bool = ...): # -> Self:
         ...
+    
     @classmethod
-    def from_file(cls, file_path: str):  # -> Self:
+    def from_file(cls, file_path: str): # -> Self:
         ...
+    
     @classmethod
-    def from_PIL(cls, pil_image):  # -> Self:
+    def from_PIL(cls, pil_image): # -> Self:
         ...
-    def __str__(self) -> str: ...
-    def __repr__(self):  # -> str:
+    
+    def __str__(self) -> str:
         ...
+    
+    def __repr__(self): # -> str:
+        ...
+    
+
 
 def is_url(string: str) -> bool:
     """Check if a string is a valid URL."""
     ...
 
-def encode_image(
-    image: Union[str, bytes, PILImage.Image, dict], download_images: bool = ...
-) -> str:
+def encode_image(image: Union[str, bytes, PILImage.Image, dict], download_images: bool = ...) -> str:
     """
     Encode an image or file to a base64 data URI.
 
@@ -55,3 +62,4 @@ def encode_image(
 def is_image(obj) -> bool:
     """Check if the object is an image or a valid media file reference."""
     ...
+

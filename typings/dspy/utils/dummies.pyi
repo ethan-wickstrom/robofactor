@@ -62,23 +62,32 @@ class DummyLM(LM):
     ```
 
     """
-    def __init__(
-        self,
-        answers: Union[list[dict[str, str]], dict[str, dict[str, str]]],
-        follow_examples: bool = ...,
-    ) -> None: ...
+    def __init__(self, answers: Union[list[dict[str, str]], dict[str, dict[str, str]]], follow_examples: bool = ...) -> None:
+        ...
+    
     @with_callbacks
-    def __call__(self, prompt=..., messages=..., **kwargs):  # -> list[Any]:
+    def __call__(self, prompt=..., messages=..., **kwargs): # -> list[Any]:
         ...
-    async def acall(self, prompt=..., messages=..., **kwargs):  # -> list[Any]:
+    
+    async def acall(self, prompt=..., messages=..., **kwargs): # -> list[Any]:
         ...
-    def get_convo(self, index):  # -> tuple[Any, Any]:
+    
+    def get_convo(self, index): # -> tuple[Any, Any]:
         """Get the prompt + answer from the ith message."""
         ...
+    
 
-def dummy_rm(passages=...) -> callable: ...
+
+def dummy_rm(passages=...) -> callable:
+    ...
 
 class DummyVectorizer:
     """Simple vectorizer based on n-grams."""
-    def __init__(self, max_length=..., n_gram=...) -> None: ...
-    def __call__(self, texts: list[str]) -> np.ndarray: ...
+    def __init__(self, max_length=..., n_gram=...) -> None:
+        ...
+    
+    def __call__(self, texts: list[str]) -> np.ndarray:
+        ...
+    
+
+

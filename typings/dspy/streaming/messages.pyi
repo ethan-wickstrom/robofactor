@@ -13,15 +13,16 @@ class StreamResponse:
     chunk: str
     ...
 
+
 @dataclass
 class StatusMessage:
     """Dataclass that wraps a status message for status streaming."""
-
     message: str
     ...
 
-def sync_send_to_stream(stream, message):
-    """Send message to stream in a sync context, regardless of whether the caller is async or not."""
+
+def sync_send_to_stream(stream, message): # -> None:
+    """Send message to stream in a sync context, regardless of event loop state."""
     ...
 
 class StatusMessageProvider:
@@ -43,47 +44,53 @@ class StatusMessageProvider:
     program = dspy.streamify(dspy.Predict("q->a"), status_message_provider=MyStatusMessageProvider())
     ```
     """
-    def tool_start_status_message(self, instance: Any, inputs: Dict[str, Any]):  # -> str:
+    def tool_start_status_message(self, instance: Any, inputs: Dict[str, Any]): # -> str:
         """Status message before a `dspy.Tool` is called."""
         ...
-
-    def tool_end_status_message(self, outputs: Any):  # -> LiteralString:
+    
+    def tool_end_status_message(self, outputs: Any): # -> LiteralString:
         """Status message after a `dspy.Tool` is called."""
         ...
-
-    def module_start_status_message(self, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def module_start_status_message(self, instance: Any, inputs: Dict[str, Any]): # -> None:
         """Status message before a `dspy.Module` or `dspy.Predict` is called."""
         ...
-
-    def module_end_status_message(self, outputs: Any):  # -> None:
+    
+    def module_end_status_message(self, outputs: Any): # -> None:
         """Status message after a `dspy.Module` or `dspy.Predict` is called."""
         ...
-
-    def lm_start_status_message(self, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def lm_start_status_message(self, instance: Any, inputs: Dict[str, Any]): # -> None:
         """Status message before a `dspy.LM` is called."""
         ...
-
-    def lm_end_status_message(self, outputs: Any):  # -> None:
+    
+    def lm_end_status_message(self, outputs: Any): # -> None:
         """Status message after a `dspy.LM` is called."""
         ...
+    
+
 
 class StatusStreamingCallback(BaseCallback):
-    def __init__(self, status_message_provider: Optional[StatusMessageProvider] = ...) -> None: ...
-    def on_tool_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    def __init__(self, status_message_provider: Optional[StatusMessageProvider] = ...) -> None:
         ...
-    def on_tool_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_tool_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         ...
-    def on_lm_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def on_tool_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
         ...
-    def on_lm_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_lm_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         ...
-    def on_module_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def on_lm_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
         ...
-    def on_module_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_module_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         ...
+    
+    def on_module_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
+        ...
+    
+
+

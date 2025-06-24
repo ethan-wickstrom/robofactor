@@ -10,18 +10,7 @@ from dspy.utils.callback import BaseCallback, with_callbacks
 from dspy.utils.dummies import DummyLM, DummyVectorizer, dummy_rm
 from dspy.utils.inspect_history import pretty_print_history
 
-def download(url):  # -> None:
+def download(url): # -> None:
     ...
 
-__all__ = [
-    "download",
-    "exceptions",
-    "BaseCallback",
-    "with_callbacks",
-    "DummyLM",
-    "DummyVectorizer",
-    "dummy_rm",
-    "StatusMessage",
-    "StatusMessageProvider",
-    "pretty_print_history",
-]
+__all__ = ["download", "exceptions", "BaseCallback", "with_callbacks", "DummyLM", "DummyVectorizer", "dummy_rm", "StatusMessage", "StatusMessageProvider", "pretty_print_history"]

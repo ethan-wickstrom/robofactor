@@ -27,10 +27,10 @@ class TwoStepAdapter(Adapter):
     print(result)
     ```
     """
-    def __init__(self, extraction_model: LM) -> None: ...
-    def format(
-        self, signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def __init__(self, extraction_model: LM) -> None:
+        ...
+    
+    def format(self, signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
         """
         Format a prompt for the first stage with the main LM.
         This no specific structure is required for the main LM, we customize the format method
@@ -45,7 +45,7 @@ class TwoStepAdapter(Adapter):
             A list of messages to be passed to the main LM.
         """
         ...
-
+    
     def parse(self, signature: Signature, completion: str) -> dict[str, Any]:
         """
         Use a smaller LM (extraction_model) with chat adapter to extract structured data
@@ -59,29 +59,19 @@ class TwoStepAdapter(Adapter):
             A dictionary containing the extracted structured data.
         """
         ...
-
-    async def acall(
-        self,
-        lm: LM,
-        lm_kwargs: dict[str, Any],
-        signature: Type[Signature],
-        demos: list[dict[str, Any]],
-        inputs: dict[str, Any],
-    ) -> list[dict[str, Any]]: ...
+    
+    async def acall(self, lm: LM, lm_kwargs: dict[str, Any], signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        ...
+    
     def format_task_description(self, signature: Signature) -> str:
         """Create a description of the task based on the signature"""
         ...
+    
+    def format_user_message_content(self, signature: Type[Signature], inputs: dict[str, Any], prefix: str = ..., suffix: str = ...) -> str:
+        ...
+    
+    def format_assistant_message_content(self, signature: Type[Signature], outputs: dict[str, Any], missing_field_message: Optional[str] = ...) -> str:
+        ...
+    
 
-    def format_user_message_content(
-        self,
-        signature: Type[Signature],
-        inputs: dict[str, Any],
-        prefix: str = ...,
-        suffix: str = ...,
-    ) -> str: ...
-    def format_assistant_message_content(
-        self,
-        signature: Type[Signature],
-        outputs: dict[str, Any],
-        missing_field_message: Optional[str] = ...,
-    ) -> str: ...
+

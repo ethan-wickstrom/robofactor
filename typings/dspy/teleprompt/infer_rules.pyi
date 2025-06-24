@@ -6,25 +6,39 @@ import dspy
 from dspy.teleprompt import BootstrapFewShot
 
 logger = ...
-
 class InferRules(BootstrapFewShot):
-    def __init__(
-        self, num_candidates=..., num_rules=..., num_threads=..., teacher_settings=..., **kwargs
-    ) -> None: ...
-    def compile(self, student, *, teacher=..., trainset, valset=...):  # -> None:
+    def __init__(self, num_candidates=..., num_rules=..., num_threads=..., teacher_settings=..., **kwargs) -> None:
         ...
-    def induce_natural_language_rules(self, predictor, trainset): ...
-    def update_program_instructions(self, predictor, natural_language_rules):  # -> None:
+    
+    def compile(self, student, *, teacher=..., trainset, valset=...): # -> None:
         ...
-    def format_examples(self, demos, signature):  # -> str:
+    
+    def induce_natural_language_rules(self, predictor, trainset): # -> object | Any:
         ...
-    def get_predictor_demos(self, trainset, predictor):  # -> list[dict[Any, Any]]:
+    
+    def update_program_instructions(self, predictor, natural_language_rules): # -> None:
         ...
-    def evaluate_program(self, program, dataset):  # -> float:
+    
+    def format_examples(self, demos, signature): # -> str:
         ...
+    
+    def get_predictor_demos(self, trainset, predictor): # -> list[dict[Any, Any]]:
+        ...
+    
+    def evaluate_program(self, program, dataset):
+        ...
+    
+
 
 class RulesInductionProgram(dspy.Module):
     def __init__(self, num_rules, teacher_settings=...) -> None:
-        class CustomRulesInduction(dspy.Signature): ...
+        class CustomRulesInduction(dspy.Signature):
+            ...
+        
+        
+    
+    def forward(self, examples_text): # -> Any:
+        ...
+    
 
-    def forward(self, examples_text): ...
+

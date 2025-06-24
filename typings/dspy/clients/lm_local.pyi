@@ -7,28 +7,33 @@ from dspy.clients.provider import Provider, TrainingJob
 from dspy.clients.utils_finetune import TrainDataFormat
 from dspy.clients.lm import LM
 
-if TYPE_CHECKING: ...
+if TYPE_CHECKING:
+    ...
 logger = ...
-
 class LocalProvider(Provider):
-    def __init__(self) -> None: ...
-    @staticmethod
-    def launch(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...):  # -> None:
+    def __init__(self) -> None:
         ...
+    
     @staticmethod
-    def kill(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...):  # -> None:
+    def launch(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...): # -> None:
         ...
+    
     @staticmethod
-    def finetune(
-        job: TrainingJob,
-        model: str,
-        train_data: List[Dict[str, Any]],
-        train_data_format: Optional[TrainDataFormat],
-        train_kwargs: Optional[Dict[str, Any]] = ...,
-    ) -> str: ...
+    def kill(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...): # -> None:
+        ...
+    
+    @staticmethod
+    def finetune(job: TrainingJob, model: str, train_data: List[Dict[str, Any]], train_data_format: Optional[TrainDataFormat], train_kwargs: Optional[Dict[str, Any]] = ...) -> str:
+        ...
+    
 
-def create_output_dir(model_name, data_path): ...
-def train_sft_locally(model_name, train_data, train_kwargs): ...
+
+def create_output_dir(model_name, data_path):
+    ...
+
+def train_sft_locally(model_name, train_data, train_kwargs):
+    ...
+
 def get_free_port() -> int:
     """
     Return a free TCP port on localhost.
@@ -45,7 +50,7 @@ def wait_for_server(base_url: str, timeout: Optional[int] = ...) -> None:
     """
     ...
 
-def encode_sft_example(example, tokenizer, max_seq_length):  # -> dict[str, Any]:
+def encode_sft_example(example, tokenizer, max_seq_length): # -> dict[str, Any]:
     """
     This function encodes a single example into a format that can be used for sft training.
     Here, we assume each example has a 'messages' field. Each message in it is a dict with 'role' and 'content' fields.
@@ -54,3 +59,4 @@ def encode_sft_example(example, tokenizer, max_seq_length):  # -> dict[str, Any]
     Code obtained from the allenai/open-instruct repository: https://github.com/allenai/open-instruct/blob/4365dea3d1a6111e8b2712af06b22a4512a0df88/open_instruct/finetune.py
     """
     ...
+

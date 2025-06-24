@@ -6,16 +6,10 @@ from typing import Any, Optional
 from dspy.primitives import Example, Module
 
 class Teleprompter:
-    def __init__(self) -> None: ...
-    def compile(
-        self,
-        student: Module,
-        *,
-        trainset: list[Example],
-        teacher: Optional[Module] = ...,
-        valset: Optional[list[Example]] = ...,
-        **kwargs,
-    ) -> Module:
+    def __init__(self) -> None:
+        ...
+    
+    def compile(self, student: Module, *, trainset: list[Example], teacher: Optional[Module] = ..., valset: Optional[list[Example]] = ..., **kwargs) -> Module:
         """
         Optimize the student program.
 
@@ -29,7 +23,7 @@ class Teleprompter:
             The optimized student program.
         """
         ...
-
+    
     def get_params(self) -> dict[str, Any]:
         """
         Get the parameters of the teleprompter.
@@ -38,3 +32,6 @@ class Teleprompter:
             The parameters of the teleprompter.
         """
         ...
+    
+
+

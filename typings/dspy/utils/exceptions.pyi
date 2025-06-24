@@ -7,11 +7,8 @@ from dspy.signatures.signature import Signature
 
 class AdapterParseError(Exception):
     """Exception raised when adapter cannot parse the LM response."""
-    def __init__(
-        self,
-        adapter_name: str,
-        signature: Signature,
-        lm_response: str,
-        message: Optional[str] = ...,
-        parsed_result: Optional[str] = ...,
-    ) -> None: ...
+    def __init__(self, adapter_name: str, signature: Signature, lm_response: str, message: Optional[str] = ..., parsed_result: Optional[str] = ...) -> None:
+        ...
+    
+
+

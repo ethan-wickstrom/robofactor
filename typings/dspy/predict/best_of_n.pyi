@@ -6,14 +6,7 @@ from typing import Callable, Optional
 from dspy.predict.predict import Module, Prediction
 
 class BestOfN(Module):
-    def __init__(
-        self,
-        module: Module,
-        N: int,
-        reward_fn: Callable[[dict, Prediction], float],
-        threshold: float,
-        fail_count: Optional[int] = ...,
-    ) -> None:
+    def __init__(self, module: Module, N: int, reward_fn: Callable[[dict, Prediction], float], threshold: float, fail_count: Optional[int] = ...) -> None:
         """
         Runs a module up to `N` times with different temperatures and returns the best prediction
         out of `N` attempts or the first prediction that passes the `threshold`.
@@ -47,6 +40,9 @@ class BestOfN(Module):
             ```
         """
         ...
-
-    def forward(self, **kwargs):  # -> None:
+    
+    def forward(self, **kwargs): # -> object | Any | None:
         ...
+    
+
+

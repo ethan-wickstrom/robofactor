@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING
 from dspy.adapters.types.tool import Tool
 from langchain.tools import BaseTool
 
-if TYPE_CHECKING: ...
-
+if TYPE_CHECKING:
+    ...
 def convert_langchain_tool(tool: BaseTool) -> Tool:
     """Build a DSPy tool from a LangChain tool.
-
+    
     This function converts a LangChain tool (either created with @tool decorator
     or by subclassing BaseTool) into a DSPy Tool.
 
@@ -21,3 +21,4 @@ def convert_langchain_tool(tool: BaseTool) -> Tool:
         A DSPy Tool object.
     """
     ...
+

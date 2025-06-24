@@ -8,6 +8,12 @@ class Ensemble(Teleprompter):
     def __init__(self, *, reduce_fn=..., size=..., deterministic=...) -> None:
         """A common reduce_fn is dspy.majority."""
         ...
+    
+    def compile(self, programs): # -> EnsembledProgram:
+        class EnsembledProgram(dspy.Module):
+            ...
+        
+        
+    
 
-    def compile(self, programs):  # -> EnsembledProgram:
-        class EnsembledProgram(dspy.Module): ...
+

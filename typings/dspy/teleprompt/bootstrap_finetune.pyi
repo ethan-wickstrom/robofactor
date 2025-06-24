@@ -7,69 +7,70 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from dspy.adapters.base import Adapter
 from dspy.clients.lm import LM
 from dspy.primitives.example import Example
-from dspy.primitives.program import Program
+from dspy.primitives.module import Module
 from dspy.teleprompt.teleprompt import Teleprompter
 
 logger = ...
-
 class FinetuneTeleprompter(Teleprompter):
-    def __init__(
-        self, train_kwargs: Optional[Union[Dict[str, Any], Dict[LM, Dict[str, Any]]]] = ...
-    ) -> None: ...
+    def __init__(self, train_kwargs: Optional[Union[Dict[str, Any], Dict[LM, Dict[str, Any]]]] = ...) -> None:
+        ...
+    
     @staticmethod
-    def convert_to_lm_dict(arg) -> Dict[LM, Any]: ...
+    def convert_to_lm_dict(arg) -> Dict[LM, Any]:
+        ...
+    
+
 
 class BootstrapFinetune(FinetuneTeleprompter):
-    def __init__(
-        self,
-        metric: Optional[Callable] = ...,
-        multitask: bool = ...,
-        train_kwargs: Optional[Union[Dict[str, Any], Dict[LM, Dict[str, Any]]]] = ...,
-        adapter: Optional[Union[Adapter, Dict[LM, Adapter]]] = ...,
-        exclude_demos: bool = ...,
-        num_threads: Optional[int] = ...,
-    ) -> None: ...
-    def compile(
-        self,
-        student: Program,
-        trainset: List[Example],
-        teacher: Optional[Union[Program, List[Program]]] = ...,
-    ) -> Program: ...
+    def __init__(self, metric: Optional[Callable] = ..., multitask: bool = ..., train_kwargs: Optional[Union[Dict[str, Any], Dict[LM, Dict[str, Any]]]] = ..., adapter: Optional[Union[Adapter, Dict[LM, Adapter]]] = ..., exclude_demos: bool = ..., num_threads: Optional[int] = ...) -> None:
+        ...
+    
+    def compile(self, student: Module, trainset: List[Example], teacher: Optional[Union[Module, List[Module]]] = ...) -> Module:
+        ...
+    
     @staticmethod
-    def finetune_lms(finetune_dict) -> Dict[Any, LM]: ...
+    def finetune_lms(finetune_dict) -> Dict[Any, LM]:
+        ...
+    
 
-def build_call_data_from_trace(
-    trace: List[Dict], pred_ind: int, adapter: Adapter, exclude_demos: bool = ...
-) -> Dict[str, List[Dict[str, Any]]]: ...
+
+def build_call_data_from_trace(trace: List[Dict], pred_ind: int, adapter: Adapter, exclude_demos: bool = ...) -> Dict[str, List[Dict[str, Any]]]:
+    ...
+
 @dataclass
 class FailedPrediction:
     completion_text: str
     format_reward: Union[float, None] = ...
 
-def bootstrap_trace_data(
-    program: Program,
-    dataset: List[Example],
-    metric: Optional[Callable] = ...,
-    num_threads: Optional[int] = ...,
-    raise_on_error=...,
-    capture_failed_parses=...,
-    failure_score: float = ...,
-    format_failure_score: float = ...,
-    log_format_failures: bool = ...,
-) -> List[Dict[str, Any]]: ...
-def all_predictors_have_lms(program: Program) -> bool:
+
+def bootstrap_trace_data(program: Module, dataset: List[Example], metric: Optional[Callable] = ..., num_threads: Optional[int] = ..., raise_on_error=..., capture_failed_parses=..., failure_score: float = ..., format_failure_score: float = ..., log_format_failures: bool = ...) -> List[Dict[str, Any]]:
+    ...
+
+def all_predictors_have_lms(program: Module) -> bool:
     """Return True if all predictors in the program have an LM set."""
     ...
 
-def copy_program_with_lms(program: Program) -> Program: ...
-def prepare_student(student: Program) -> Program: ...
-def prepare_teacher(student: Program, teacher: Optional[Program] = ...) -> Program: ...
-def assert_structural_equivalency(program1: object, program2: object):  # -> None:
+def copy_program_with_lms(program: Module) -> Module:
     ...
-def assert_no_shared_predictor(program1: Program, program2: Program):  # -> None:
+
+def prepare_student(student: Module) -> Module:
     ...
-def get_unique_lms(program: Program) -> List[LM]: ...
-def launch_lms(program: Program):  # -> None:
+
+def prepare_teacher(student: Module, teacher: Optional[Module] = ...) -> Module:
     ...
-def kill_lms(program: Program):  # -> None:
+
+def assert_structural_equivalency(program1: object, program2: object): # -> None:
     ...
+
+def assert_no_shared_predictor(program1: Module, program2: Module): # -> None:
+    ...
+
+def get_unique_lms(program: Module) -> List[LM]:
+    ...
+
+def launch_lms(program: Module): # -> None:
+    ...
+
+def kill_lms(program: Module): # -> None:
+    ...
+

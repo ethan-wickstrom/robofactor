@@ -7,21 +7,8 @@ from typing import Callable
 from dspy.teleprompt.teleprompt import Teleprompter
 
 logger = ...
-
 class SIMBA(Teleprompter):
-    def __init__(
-        self,
-        *,
-        metric: Callable,
-        bsize=...,
-        num_candidates=...,
-        max_steps=...,
-        max_demos=...,
-        demo_input_field_maxlen=...,
-        num_threads=...,
-        temperature_for_sampling=...,
-        temperature_for_candidates=...,
-    ) -> None:
+    def __init__(self, *, metric: Callable, bsize=..., num_candidates=..., max_steps=..., max_demos=..., demo_input_field_maxlen=..., num_threads=..., temperature_for_sampling=..., temperature_for_candidates=...) -> None:
         """
         Initializes SIMBA.
 
@@ -44,8 +31,9 @@ class SIMBA(Teleprompter):
                 the source program for building new candidates. Defaults to 0.2.
         """
         ...
-
-    def compile(
-        self, student: dspy.Module, *, trainset: list[dspy.Example], seed: int = ...
-    ):  # -> Module:
+    
+    def compile(self, student: dspy.Module, *, trainset: list[dspy.Example], seed: int = ...): # -> Module:
         ...
+    
+
+

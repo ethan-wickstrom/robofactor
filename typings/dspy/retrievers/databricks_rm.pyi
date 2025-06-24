@@ -8,13 +8,15 @@ from typing import Any, Dict, List, Optional, Union
 from dspy.primitives.prediction import Prediction
 
 _databricks_sdk_installed = ...
-
 @dataclass
 class Document:
     page_content: str
     metadata: Dict[str, Any]
     type: str
-    def to_dict(self) -> Dict[str, Any]: ...
+    def to_dict(self) -> Dict[str, Any]:
+        ...
+    
+
 
 class DatabricksRM(dspy.Retrieve):
     """
@@ -70,21 +72,7 @@ class DatabricksRM(dspy.Retrieve):
         retrieved_results = DatabricksRM(query="Example query text"))
         ```
     """
-    def __init__(
-        self,
-        databricks_index_name: str,
-        databricks_endpoint: Optional[str] = ...,
-        databricks_token: Optional[str] = ...,
-        databricks_client_id: Optional[str] = ...,
-        databricks_client_secret: Optional[str] = ...,
-        columns: Optional[List[str]] = ...,
-        filters_json: Optional[str] = ...,
-        k: int = ...,
-        docs_id_column_name: str = ...,
-        docs_uri_column_name: Optional[str] = ...,
-        text_column_name: str = ...,
-        use_with_databricks_agent_framework: bool = ...,
-    ) -> None:
+    def __init__(self, databricks_index_name: str, databricks_endpoint: Optional[str] = ..., databricks_token: Optional[str] = ..., databricks_client_id: Optional[str] = ..., databricks_client_secret: Optional[str] = ..., columns: Optional[List[str]] = ..., filters_json: Optional[str] = ..., k: int = ..., docs_id_column_name: str = ..., docs_uri_column_name: Optional[str] = ..., text_column_name: str = ..., use_with_databricks_agent_framework: bool = ...) -> None:
         """
         Args:
             databricks_index_name (str): The name of the Databricks Vector Search Index to query.
@@ -118,13 +106,8 @@ class DatabricksRM(dspy.Retrieve):
                 compatible with the Databricks Mosaic Agent Framework.
         """
         ...
-
-    def forward(
-        self,
-        query: Union[str, List[float]],
-        query_type: str = ...,
-        filters_json: Optional[str] = ...,
-    ) -> Union[dspy.Prediction, List[Dict[str, Any]]]:
+    
+    def forward(self, query: Union[str, List[float]], query_type: str = ..., filters_json: Optional[str] = ...) -> Union[dspy.Prediction, List[Dict[str, Any]]]:
         """
         Retrieve documents from a Databricks Mosaic AI Vector Search Index that are relevant to the
         specified query.
@@ -147,3 +130,6 @@ class DatabricksRM(dspy.Retrieve):
             ``False``.
         """
         ...
+    
+
+

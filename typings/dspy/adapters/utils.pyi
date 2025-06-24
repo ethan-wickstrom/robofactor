@@ -29,8 +29,9 @@ def format_field_value(field_info: FieldInfo, value: Any, assume_text=...) -> Un
     """
     ...
 
-def translate_field_type(field_name, field_info):  # -> str:
+def translate_field_type(field_name, field_info): # -> str:
     ...
+
 def find_enum_member(enum, identifier):
     """
     Finds the enum member corresponding to the specified identifier, which may be the
@@ -45,8 +46,12 @@ def find_enum_member(enum, identifier):
     """
     ...
 
-def parse_value(value, annotation):  # -> str | EnumMeta:
+def parse_value(value, annotation): # -> str | EnumMeta:
     ...
-def get_annotation_name(annotation):  # -> str:
+
+def get_annotation_name(annotation): # -> str:
     ...
-def get_field_description_string(fields: dict) -> str: ...
+
+def get_field_description_string(fields: dict) -> str:
+    ...
+

@@ -38,17 +38,10 @@ class WeaviateRM(dspy.Retrieve):
         self.retrieve = WeaviateRM("my_collection_name", weaviate_client=weaviate_client, k=num_passages)
         ```
     """
-    def __init__(
-        self,
-        weaviate_collection_name: str,
-        weaviate_client: Union[weaviate.WeaviateClient, weaviate.Client],
-        weaviate_collection_text_key: Optional[str] = ...,
-        k: int = ...,
-        tenant_id: Optional[str] = ...,
-    ) -> None: ...
-    def forward(
-        self, query_or_queries: Union[str, List[str]], k: Optional[int] = ..., **kwargs
-    ) -> Prediction:
+    def __init__(self, weaviate_collection_name: str, weaviate_client: Union[weaviate.WeaviateClient, weaviate.Client], weaviate_collection_text_key: Optional[str] = ..., k: int = ..., tenant_id: Optional[str] = ...) -> None:
+        ...
+    
+    def forward(self, query_or_queries: Union[str, List[str]], k: Optional[int] = ..., **kwargs) -> Prediction:
         """Search with Weaviate for self.k top passages for query or queries.
 
         Args:
@@ -60,10 +53,13 @@ class WeaviateRM(dspy.Retrieve):
             dspy.Prediction: An object containing the retrieved passages.
         """
         ...
-
+    
     def get_objects(self, num_samples: int, fields: List[str]) -> List[dict]:
         """Get objects from Weaviate using the cursor API."""
         ...
-
-    def insert(self, new_object_properties: dict):  # -> None:
+    
+    def insert(self, new_object_properties: dict): # -> None:
         ...
+    
+
+

@@ -8,30 +8,22 @@ from dspy.utils.callback import BaseCallback
 from dspy.clients.lm import LM
 
 logger = ...
-if TYPE_CHECKING: ...
-
+if TYPE_CHECKING:
+    ...
 class Adapter:
-    def __init__(self, callbacks: Optional[list[BaseCallback]] = ...) -> None: ...
-    def __init_subclass__(cls, **kwargs) -> None: ...
-    def __call__(
-        self,
-        lm: LM,
-        lm_kwargs: dict[str, Any],
-        signature: Type[Signature],
-        demos: list[dict[str, Any]],
-        inputs: dict[str, Any],
-    ) -> list[dict[str, Any]]: ...
-    async def acall(
-        self,
-        lm: LM,
-        lm_kwargs: dict[str, Any],
-        signature: Type[Signature],
-        demos: list[dict[str, Any]],
-        inputs: dict[str, Any],
-    ) -> list[dict[str, Any]]: ...
-    def format(
-        self, signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def __init__(self, callbacks: Optional[list[BaseCallback]] = ...) -> None:
+        ...
+    
+    def __init_subclass__(cls, **kwargs) -> None:
+        ...
+    
+    def __call__(self, lm: LM, lm_kwargs: dict[str, Any], signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        ...
+    
+    async def acall(self, lm: LM, lm_kwargs: dict[str, Any], signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        ...
+    
+    def format(self, signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
         """Format the input messages for the LM call.
 
         This method converts the DSPy structured input along with few-shot examples and conversation history into
@@ -72,7 +64,7 @@ class Adapter:
             A list of multiturn messages as expected by the LM.
         """
         ...
-
+    
     def format_field_description(self, signature: Type[Signature]) -> str:
         """Format the field description for the system message.
 
@@ -86,7 +78,7 @@ class Adapter:
             A string that contains the field description for the input fields and the output fields.
         """
         ...
-
+    
     def format_field_structure(self, signature: Type[Signature]) -> str:
         """Format the field structure for the system message.
 
@@ -98,7 +90,7 @@ class Adapter:
             signature: The DSPy signature for which to format the field structure.
         """
         ...
-
+    
     def format_task_description(self, signature: Type[Signature]) -> str:
         """Format the task description for the system message.
 
@@ -112,15 +104,8 @@ class Adapter:
             A string that describes the task.
         """
         ...
-
-    def format_user_message_content(
-        self,
-        signature: Type[Signature],
-        inputs: dict[str, Any],
-        prefix: str = ...,
-        suffix: str = ...,
-        main_request: bool = ...,
-    ) -> str:
+    
+    def format_user_message_content(self, signature: Type[Signature], inputs: dict[str, Any], prefix: str = ..., suffix: str = ..., main_request: bool = ...) -> str:
         """Format the user message content.
 
         This method formats the user message content, which can be used in formatting few-shot examples, conversation
@@ -136,13 +121,8 @@ class Adapter:
             A string that contains the user message content.
         """
         ...
-
-    def format_assistant_message_content(
-        self,
-        signature: Type[Signature],
-        outputs: dict[str, Any],
-        missing_field_message: Optional[str] = ...,
-    ) -> str:
+    
+    def format_assistant_message_content(self, signature: Type[Signature], outputs: dict[str, Any], missing_field_message: Optional[str] = ...) -> str:
         """Format the assistant message content.
 
         This method formats the assistant message content, which can be used in formatting few-shot examples,
@@ -157,10 +137,8 @@ class Adapter:
             A string that contains the assistant message content.
         """
         ...
-
-    def format_demos(
-        self, signature: Type[Signature], demos: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    
+    def format_demos(self, signature: Type[Signature], demos: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Format the few-shot examples.
 
         This method formats the few-shot examples as multiturn messages.
@@ -174,10 +152,8 @@ class Adapter:
             A list of multiturn messages.
         """
         ...
-
-    def format_conversation_history(
-        self, signature: Type[Signature], history_field_name: str, inputs: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    
+    def format_conversation_history(self, signature: Type[Signature], history_field_name: str, inputs: dict[str, Any]) -> list[dict[str, Any]]:
         """Format the conversation history.
 
         This method formats the conversation history and the current input as multiturn messages.
@@ -191,7 +167,7 @@ class Adapter:
             A list of multiturn messages.
         """
         ...
-
+    
     def parse(self, signature: Type[Signature], completion: str) -> dict[str, Any]:
         """Parse the LM output into a dictionary of the output fields.
 
@@ -205,3 +181,6 @@ class Adapter:
             A dictionary of the output fields.
         """
         ...
+    
+
+

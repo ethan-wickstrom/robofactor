@@ -6,7 +6,6 @@ from dspy.utils.callback import with_callbacks
 
 MAX_HISTORY_SIZE = ...
 GLOBAL_HISTORY = ...
-
 class BaseLM:
     """Base class for handling LLM calls.
 
@@ -38,15 +37,17 @@ class BaseLM:
     print(dspy.Predict("q->a")(q="Why did the chicken cross the kitchen?"))
     ```
     """
-    def __init__(
-        self, model, model_type=..., temperature=..., max_tokens=..., cache=..., **kwargs
-    ) -> None: ...
-    @with_callbacks
-    def __call__(self, prompt=..., messages=..., **kwargs):  # -> list[Any]:
+    def __init__(self, model, model_type=..., temperature=..., max_tokens=..., cache=..., **kwargs) -> None:
         ...
+    
     @with_callbacks
-    async def acall(self, prompt=..., messages=..., **kwargs):  # -> list[Any]:
+    def __call__(self, prompt=..., messages=..., **kwargs): # -> list[Any]:
         ...
+    
+    @with_callbacks
+    async def acall(self, prompt=..., messages=..., **kwargs): # -> list[Any]:
+        ...
+    
     def forward(self, prompt=..., messages=..., **kwargs):
         """Forward pass for the language model.
 
@@ -54,7 +55,7 @@ class BaseLM:
         [OpenAI response format](https://platform.openai.com/docs/api-reference/responses/object).
         """
         ...
-
+    
     async def aforward(self, prompt=..., messages=..., **kwargs):
         """Async forward pass for the language model.
 
@@ -62,16 +63,20 @@ class BaseLM:
         [OpenAI response format](https://platform.openai.com/docs/api-reference/responses/object).
         """
         ...
-
-    def copy(self, **kwargs):  # -> Self:
+    
+    def copy(self, **kwargs): # -> Self:
         """Returns a copy of the language model with possibly updated parameters."""
         ...
-
-    def inspect_history(self, n: int = ...):  # -> None:
+    
+    def inspect_history(self, n: int = ...): # -> None:
         ...
-    def update_global_history(self, entry):  # -> None:
+    
+    def update_global_history(self, entry): # -> None:
         ...
+    
 
-def inspect_history(n: int = ...):  # -> None:
+
+def inspect_history(n: int = ...): # -> None:
     """The global history shared across all LMs."""
     ...
+

@@ -7,7 +7,6 @@ from typing import Any, Union
 
 CUSTOM_TYPE_START_IDENTIFIER = ...
 CUSTOM_TYPE_END_IDENTIFIER = ...
-
 class BaseType(pydantic.BaseModel):
     """Base class to support creating custom types for DSPy signatures.
 
@@ -24,24 +23,28 @@ class BaseType(pydantic.BaseModel):
                 return [{"type": "image_url", "image_url": {"url": self.url}}]
         ```
     """
-    def format(self) -> Union[list[dict[str, Any]], str]: ...
+    def format(self) -> Union[list[dict[str, Any]], str]:
+        ...
+    
     @classmethod
     def description(cls) -> str:
         """Description of the custom type"""
         ...
-
+    
     @classmethod
-    def extract_custom_type_from_annotation(cls, annotation):  # -> list[type[Self]] | list[Any]:
+    def extract_custom_type_from_annotation(cls, annotation): # -> list[type[Self]] | list[Any]:
         """Extract all custom types from the annotation.
 
         This is used to extract all custom types from the annotation of a field, while the annotation can
         have arbitrary level of nesting. For example, we detect `Tool` is in `list[dict[str, Tool]]`.
         """
         ...
-
+    
     @pydantic.model_serializer()
-    def serialize_model(self):  # -> str:
+    def serialize_model(self): # -> str:
         ...
+    
+
 
 def split_message_content_for_custom_types(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Split user message content into a list of content blocks.
@@ -70,3 +73,4 @@ def split_message_content_for_custom_types(messages: list[dict[str, Any]]) -> li
         A list of messages with the content split into a list of content blocks around custom types content.
     """
     ...
+

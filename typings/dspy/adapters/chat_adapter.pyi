@@ -10,23 +10,25 @@ from dspy.signatures.signature import Signature
 from dspy.utils.callback import BaseCallback
 
 field_header_pattern = ...
-
 class FieldInfoWithName(NamedTuple):
     name: str
     info: FieldInfo
     ...
 
+
 class ChatAdapter(Adapter):
-    def __init__(self, callbacks: Optional[list[BaseCallback]] = ...) -> None: ...
-    def __call__(
-        self,
-        lm: LM,
-        lm_kwargs: dict[str, Any],
-        signature: Type[Signature],
-        demos: list[dict[str, Any]],
-        inputs: dict[str, Any],
-    ) -> list[dict[str, Any]]: ...
-    def format_field_description(self, signature: Type[Signature]) -> str: ...
+    def __init__(self, callbacks: Optional[list[BaseCallback]] = ...) -> None:
+        ...
+    
+    def __call__(self, lm: LM, lm_kwargs: dict[str, Any], signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        ...
+    
+    async def acall(self, lm: LM, lm_kwargs: dict[str, Any], signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        ...
+    
+    def format_field_description(self, signature: Type[Signature]) -> str:
+        ...
+    
     def format_field_structure(self, signature: Type[Signature]) -> str:
         """
         `ChatAdapter` requires input and output fields to be in their own sections, with section header using markers
@@ -34,16 +36,13 @@ class ChatAdapter(Adapter):
         output fields section to indicate the end of the output fields.
         """
         ...
-
-    def format_task_description(self, signature: Type[Signature]) -> str: ...
-    def format_user_message_content(
-        self,
-        signature: Type[Signature],
-        inputs: dict[str, Any],
-        prefix: str = ...,
-        suffix: str = ...,
-        main_request: bool = ...,
-    ) -> str: ...
+    
+    def format_task_description(self, signature: Type[Signature]) -> str:
+        ...
+    
+    def format_user_message_content(self, signature: Type[Signature], inputs: dict[str, Any], prefix: str = ..., suffix: str = ..., main_request: bool = ...) -> str:
+        ...
+    
     def user_message_output_requirements(self, signature: Type[Signature]) -> str:
         """Returns a simplified format reminder for the language model.
 
@@ -62,11 +61,13 @@ class ChatAdapter(Adapter):
             for inline reminders within chat messages.
         """
         ...
-
-    def format_assistant_message_content(
-        self, signature: Type[Signature], outputs: dict[str, Any], missing_field_message=...
-    ) -> str: ...
-    def parse(self, signature: Type[Signature], completion: str) -> dict[str, Any]: ...
+    
+    def format_assistant_message_content(self, signature: Type[Signature], outputs: dict[str, Any], missing_field_message=...) -> str:
+        ...
+    
+    def parse(self, signature: Type[Signature], completion: str) -> dict[str, Any]:
+        ...
+    
     def format_field_with_value(self, fields_with_values: Dict[FieldInfoWithName, Any]) -> str:
         """
         Formats the values of the specified fields according to the field's DSPy type (input or output),
@@ -81,14 +82,8 @@ class ChatAdapter(Adapter):
             The joined formatted values of the fields, represented as a string
         """
         ...
-
-    def format_finetune_data(
-        self,
-        signature: Type[Signature],
-        demos: list[dict[str, Any]],
-        inputs: dict[str, Any],
-        outputs: dict[str, Any],
-    ) -> dict[str, list[Any]]:
+    
+    def format_finetune_data(self, signature: Type[Signature], demos: list[dict[str, Any]], inputs: dict[str, Any], outputs: dict[str, Any]) -> dict[str, list[Any]]:
         """
         Format the call data into finetuning data according to the OpenAI API specifications.
 
@@ -97,3 +92,6 @@ class ChatAdapter(Adapter):
         wrapped in a dictionary with a "messages" key.
         """
         ...
+    
+
+

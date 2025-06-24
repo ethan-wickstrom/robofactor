@@ -6,16 +6,16 @@ import dspy
 from typing import Callable
 
 logger = ...
+def prepare_models_for_resampling(program: dspy.Module, n: int): # -> list[LM | Any]:
+    ...
 
-def prepare_models_for_resampling(program: dspy.Module, n: int):  # -> list[LM | Any]:
+def wrap_program(program: dspy.Module, metric: Callable): # -> Callable[..., dict[str, object | Any | float | None]]:
     ...
-def wrap_program(
-    program: dspy.Module, metric: Callable
-):  # -> Callable[..., dict[str, Any | float | None]]:
+
+def append_a_demo(demo_input_field_maxlen): # -> Callable[..., Literal[True]]:
     ...
-def append_a_demo(demo_input_field_maxlen):  # -> Callable[..., Literal[True]]:
-    ...
-def append_a_rule(bucket, system, **kwargs):  # -> bool:
+
+def append_a_rule(bucket, system, **kwargs): # -> bool:
     ...
 
 class OfferFeedback(dspy.Signature):
@@ -32,7 +32,6 @@ class OfferFeedback(dspy.Signature):
     - Rely on contrasting the behavior of the worse trajectory against the better trajectory in making recommendations.
     - Ensure each unique module name appears exactly once as a key in the advice dictionary.
     """
-
     program_code: str = ...
     modules_defn: str = ...
     program_inputs: str = ...
@@ -47,9 +46,10 @@ class OfferFeedback(dspy.Signature):
     discussion: str = ...
     module_advice: dict[str, str] = ...
 
-def inspect_modules(program):  # -> str:
+
+def inspect_modules(program): # -> str:
     ...
-def recursive_mask(
-    o,
-):  # -> dict[Any, Any | dict[Any, Any] | list[Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str] | list[Any | dict[Any, Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str:
+
+def recursive_mask(o): # -> dict[Any, Any | dict[Any, Any] | list[Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str] | list[Any | dict[Any, Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str:
     ...
+

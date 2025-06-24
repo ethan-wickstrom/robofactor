@@ -6,8 +6,8 @@ import mcp
 from typing import TYPE_CHECKING
 from dspy.adapters.types.tool import Tool
 
-if TYPE_CHECKING: ...
-
+if TYPE_CHECKING:
+    ...
 def convert_mcp_tool(session: mcp.client.session.ClientSession, tool: mcp.types.Tool) -> Tool:
     """Build a DSPy tool from an MCP tool.
 
@@ -19,3 +19,4 @@ def convert_mcp_tool(session: mcp.client.session.ClientSession, tool: mcp.types.
         A dspy Tool object.
     """
     ...
+

@@ -8,62 +8,60 @@ https://github.com/facebookresearch/DPR/tree/master/dpr
 Original license: https://github.com/facebookresearch/DPR/blob/main/LICENSE
 """
 logger = ...
-
 class Tokens:
     """A class to represent a list of tokenized text."""
-
     TEXT = ...
     TEXT_WS = ...
     SPAN = ...
     POS = ...
     LEMMA = ...
     NER = ...
-    def __init__(self, data, annotators, opts=...) -> None: ...
-    def __len__(self):  # -> int:
+    def __init__(self, data, annotators, opts=...) -> None:
+        ...
+    
+    def __len__(self): # -> int:
         """The number of tokens."""
         ...
-
-    def slice(self, i=..., j=...):  # -> Self:
+    
+    def slice(self, i=..., j=...): # -> Self:
         """Return a view of the list of tokens from [i, j)."""
         ...
-
-    def untokenize(self):  # -> LiteralString:
+    
+    def untokenize(self): # -> LiteralString:
         """Returns the original text (with whitespace reinserted)."""
         ...
-
-    def words(self, uncased=...):  # -> list[Any]:
+    
+    def words(self, uncased=...): # -> list[Any]:
         """Returns a list of the text of each token
 
         Args:
             uncased: lower cases text
         """
         ...
-
-    def offsets(self):  # -> list[Any]:
+    
+    def offsets(self): # -> list[Any]:
         """Returns a list of [start, end) character offsets of each token."""
         ...
-
-    def pos(self):  # -> list[Any] | None:
+    
+    def pos(self): # -> list[Any] | None:
         """Returns a list of part-of-speech tags of each token.
         Returns None if this annotation was not included.
         """
         ...
-
-    def lemmas(self):  # -> list[Any] | None:
+    
+    def lemmas(self): # -> list[Any] | None:
         """Returns a list of the lemmatized text of each token.
         Returns None if this annotation was not included.
         """
         ...
-
-    def entities(self):  # -> list[Any] | None:
+    
+    def entities(self): # -> list[Any] | None:
         """Returns a list of named-entity-recognition tags of each token.
         Returns None if this annotation was not included.
         """
         ...
-
-    def ngrams(
-        self, n=..., uncased=..., filter_fn=..., as_strings=...
-    ):  # -> list[str] | list[tuple[int, int]]:
+    
+    def ngrams(self, n=..., uncased=..., filter_fn=..., as_strings=...): # -> list[str] | list[tuple[int, int]]:
         """Returns a list of all ngrams from length 1 to n.
 
         Args:
@@ -74,20 +72,27 @@ class Tokens:
             as_string: return the ngram as a string vs list
         """
         ...
-
-    def entity_groups(self):  # -> list[Any] | None:
+    
+    def entity_groups(self): # -> list[Any] | None:
         """Group consecutive entity tokens with the same NER tag."""
         ...
+    
+
 
 class Tokenizer:
     """Base tokenizer class.
     Tokenizers implement tokenize, which should return a Tokens class.
     """
-    def tokenize(self, text): ...
-    def shutdown(self):  # -> None:
+    def tokenize(self, text):
         ...
-    def __del__(self):  # -> None:
+    
+    def shutdown(self): # -> None:
         ...
+    
+    def __del__(self): # -> None:
+        ...
+    
+
 
 class SimpleTokenizer(Tokenizer):
     ALPHA_NUM = ...
@@ -98,24 +103,29 @@ class SimpleTokenizer(Tokenizer):
             annotators: None or empty set (only tokenizes).
         """
         ...
-
-    def tokenize(self, text):  # -> Tokens:
+    
+    def tokenize(self, text): # -> Tokens:
         ...
+    
 
-def has_answer(tokenized_answers, text):  # -> bool:
+
+def has_answer(tokenized_answers, text): # -> bool:
     ...
-def locate_answers(tokenized_answers, text):  # -> list[Any]:
+
+def locate_answers(tokenized_answers, text): # -> list[Any]:
     """
     Returns each occurrence of an answer as (offset, endpos) in terms of *characters*.
     """
     ...
 
 STokenizer = ...
+def DPR_tokenize(text): # -> Tokens:
+    ...
 
-def DPR_tokenize(text):  # -> Tokens:
+def DPR_normalize(text): # -> list[Any]:
     ...
-def DPR_normalize(text):  # -> list[Any]:
-    ...
-def strip_accents(text):  # -> LiteralString:
+
+def strip_accents(text): # -> LiteralString:
     """Strips accents from a piece of text."""
     ...
+

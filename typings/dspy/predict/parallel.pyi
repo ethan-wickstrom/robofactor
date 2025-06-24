@@ -6,16 +6,14 @@ from typing import Any, List, Optional, Tuple
 from dspy.primitives.example import Example
 
 class Parallel:
-    def __init__(
-        self,
-        num_threads: Optional[int] = ...,
-        max_errors: int = ...,
-        access_examples: bool = ...,
-        return_failed_examples: bool = ...,
-        provide_traceback: Optional[bool] = ...,
-        disable_progress_bar: bool = ...,
-    ) -> None: ...
-    def forward(
-        self, exec_pairs: List[Tuple[Any, Example]], num_threads: Optional[int] = ...
-    ) -> List[Any]: ...
-    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+    def __init__(self, num_threads: Optional[int] = ..., max_errors: Optional[int] = ..., access_examples: bool = ..., return_failed_examples: bool = ..., provide_traceback: Optional[bool] = ..., disable_progress_bar: bool = ...) -> None:
+        ...
+    
+    def forward(self, exec_pairs: List[Tuple[Any, Example]], num_threads: Optional[int] = ...) -> List[Any]:
+        ...
+    
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+    
+
+

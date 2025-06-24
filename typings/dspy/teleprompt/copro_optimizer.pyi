@@ -7,34 +7,26 @@ from dspy.signatures import Signature
 from dspy.teleprompt.teleprompt import Teleprompter
 
 logger = ...
-
 class BasicGenerateInstruction(Signature):
     """You are an instruction optimizer for large language models. I will give you a ``signature`` of fields (inputs and outputs) in English. Your task is to propose an instruction that will lead a good language model to perform the task well. Don't be afraid to be creative."""
-
     basic_instruction = ...
     proposed_instruction = ...
     proposed_prefix_for_output_field = ...
+
 
 class GenerateInstructionGivenAttempts(dspy.Signature):
     """You are an instruction optimizer for large language models. I will give some task instructions I've tried, along with their corresponding validation scores. The instructions are arranged in increasing order based on their scores, where higher scores indicate better quality.
 
     Your task is to propose a new instruction that will lead a good language model to perform the task even better. Don't be afraid to be creative."""
-
     attempted_instructions = ...
     proposed_instruction = ...
     proposed_prefix_for_output_field = ...
 
+
 class COPRO(Teleprompter):
-    def __init__(
-        self,
-        prompt_model=...,
-        metric=...,
-        breadth=...,
-        depth=...,
-        init_temperature=...,
-        track_stats=...,
-        **_kwargs,
-    ) -> None: ...
+    def __init__(self, prompt_model=..., metric=..., breadth=..., depth=..., init_temperature=..., track_stats=..., **_kwargs) -> None:
+        ...
+    
     def compile(self, student, *, trainset, eval_kwargs):
         """
         optimizes `signature` of `student` program - note that it may be zero-shot or already pre-optimized (demos already chosen - `demos != []`)
@@ -48,3 +40,6 @@ class COPRO(Teleprompter):
         Returns optimized version of `student`.
         """
         ...
+    
+
+

@@ -9,16 +9,15 @@ from dspy.adapters.types.base_type import BaseType
 from dspy.utils.callback import with_callbacks
 from langchain.tools import BaseTool
 
-if TYPE_CHECKING: ...
+if TYPE_CHECKING:
+    ...
 _TYPE_MAPPING = ...
-
 class Tool(BaseType):
     """Tool class.
 
     This class is used to simplify the creation of tools for tool calling (function calling) in LLMs. Only supports
     functions for now.
     """
-
     func: Callable
     name: Optional[str] = ...
     desc: Optional[str] = ...
@@ -26,15 +25,7 @@ class Tool(BaseType):
     arg_types: Optional[dict[str, Any]] = ...
     arg_desc: Optional[dict[str, str]] = ...
     has_kwargs: bool = ...
-    def __init__(
-        self,
-        func: Callable,
-        name: Optional[str] = ...,
-        desc: Optional[str] = ...,
-        args: Optional[dict[str, Any]] = ...,
-        arg_types: Optional[dict[str, Any]] = ...,
-        arg_desc: Optional[dict[str, str]] = ...,
-    ) -> None:
+    def __init__(self, func: Callable, name: Optional[str] = ..., desc: Optional[str] = ..., args: Optional[dict[str, Any]] = ..., arg_types: Optional[dict[str, Any]] = ..., arg_desc: Optional[dict[str, str]] = ...) -> None:
         """Initialize the Tool class.
 
         Users can choose to specify the `name`, `desc`, `args`, and `arg_types`, or let the `dspy.Tool`
@@ -64,18 +55,21 @@ class Tool(BaseType):
         ```
         """
         ...
-
-    def format(self):  # -> str:
+    
+    def format(self): # -> str:
         ...
-    def format_as_litellm_function_call(
-        self,
-    ):  # -> dict[str, str | dict[str, str | dict[str, str | dict[str, Any] | list[str] | None] | None]]:
+    
+    def format_as_litellm_function_call(self): # -> dict[str, str | dict[str, str | dict[str, str | dict[str, Any] | list[str] | None] | None]]:
         ...
+    
     @with_callbacks
-    def __call__(self, **kwargs): ...
-    @with_callbacks
-    async def acall(self, **kwargs):  # -> Any:
+    def __call__(self, **kwargs): # -> Any:
         ...
+    
+    @with_callbacks
+    async def acall(self, **kwargs): # -> Any:
+        ...
+    
     @classmethod
     def from_mcp_tool(cls, session: mcp.client.session.ClientSession, tool: mcp.types.Tool) -> Tool:
         """
@@ -89,7 +83,7 @@ class Tool(BaseType):
             A Tool object.
         """
         ...
-
+    
     @classmethod
     def from_langchain(cls, tool: BaseTool) -> Tool:
         """
@@ -102,32 +96,43 @@ class Tool(BaseType):
             A Tool object.
 
         Example:
-        ```python
-        from langchain.tools import tool
-        import dspy
 
-        @tool
+        ```python
+        import asyncio
+        import dspy
+        from langchain.tools import tool as lc_tool
+
+        @lc_tool
         def add(x: int, y: int):
             "Add two numbers together."
             return x + y
 
-        tool = dspy.Tool.from_langchain(add)
-        print(await tool.acall(x=1, y=2))
+        dspy_tool = dspy.Tool.from_langchain(add)
+
+        async def run_tool():
+            return await dspy_tool.acall(x=1, y=2)
+
+        print(asyncio.run(run_tool()))
         # 3
         ```
         """
         ...
-
-    def __repr__(self):  # -> str:
+    
+    def __repr__(self): # -> str:
         ...
-    def __str__(self) -> str: ...
+    
+    def __str__(self) -> str:
+        ...
+    
+
 
 class ToolCalls(BaseType):
     class ToolCall(BaseModel):
         name: str
         args: dict[str, Any]
         ...
-
+    
+    
     tool_calls: list[ToolCall]
     @classmethod
     def from_dict_list(cls, tool_calls_dicts: list[dict[str, Any]]) -> ToolCalls:
@@ -150,13 +155,14 @@ class ToolCalls(BaseType):
             ```
         """
         ...
-
+    
     @classmethod
-    def description(cls) -> str: ...
+    def description(cls) -> str:
+        ...
+    
 
-def convert_input_schema_to_tool_args(
-    schema: dict[str, Any],
-) -> Tuple[dict[str, Any], dict[str, Type], dict[str, str]]:
+
+def convert_input_schema_to_tool_args(schema: dict[str, Any]) -> Tuple[dict[str, Any], dict[str, Type], dict[str, str]]:
     """Convert an input json schema to tool arguments compatible with DSPy Tool.
 
     Args:
@@ -166,3 +172,4 @@ def convert_input_schema_to_tool_args(
         A tuple of (args, arg_types, arg_desc) for DSPy Tool definition.
     """
     ...
+

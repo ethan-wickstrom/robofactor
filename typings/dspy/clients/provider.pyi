@@ -9,56 +9,72 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 from dspy.clients.utils_finetune import TrainDataFormat
 from dspy.clients.lm import LM
 
-if TYPE_CHECKING: ...
-
+if TYPE_CHECKING:
+    ...
 class TrainingJob(Future):
-    def __init__(
-        self,
-        thread: Optional[Thread] = ...,
-        model: Optional[str] = ...,
-        train_data: Optional[List[Dict[str, Any]]] = ...,
-        train_data_format: Optional[TrainDataFormat] = ...,
-        train_kwargs: Optional[Dict[str, Any]] = ...,
-    ) -> None: ...
-    def cancel(self):  # -> None:
+    def __init__(self, thread: Optional[Thread] = ..., model: Optional[str] = ..., train_data: Optional[List[Dict[str, Any]]] = ..., train_data_format: Optional[TrainDataFormat] = ..., train_kwargs: Optional[Dict[str, Any]] = ...) -> None:
         ...
+    
+    def cancel(self): # -> None:
+        ...
+    
     @abstractmethod
-    def status(self): ...
+    def status(self):
+        ...
+    
+
 
 class ReinforceJob:
-    def __init__(self, lm: LM, train_kwargs: Optional[Dict[str, Any]] = ...) -> None: ...
+    def __init__(self, lm: LM, train_kwargs: Optional[Dict[str, Any]] = ...) -> None:
+        ...
+    
     @abstractmethod
-    def initialize(self): ...
+    def initialize(self):
+        ...
+    
     @abstractmethod
-    def step(
-        self,
-        train_data: List[Dict[str, Any]],
-        train_data_format: Optional[Union[TrainDataFormat, str]] = ...,
-    ): ...
+    def step(self, train_data: List[Dict[str, Any]], train_data_format: Optional[Union[TrainDataFormat, str]] = ...):
+        ...
+    
     @abstractmethod
-    def terminate(self): ...
+    def terminate(self):
+        ...
+    
     @abstractmethod
-    def update_model(self): ...
+    def update_model(self):
+        ...
+    
     @abstractmethod
-    def save_checkpoint(self, checkpoint_name: str): ...
-    def cancel(self): ...
-    def status(self): ...
+    def save_checkpoint(self, checkpoint_name: str):
+        ...
+    
+    def cancel(self):
+        ...
+    
+    def status(self):
+        ...
+    
+
 
 class Provider:
-    def __init__(self) -> None: ...
-    @staticmethod
-    def is_provider_model(model: str) -> bool: ...
-    @staticmethod
-    def launch(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...):  # -> None:
+    def __init__(self) -> None:
         ...
+    
     @staticmethod
-    def kill(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...):  # -> None:
+    def is_provider_model(model: str) -> bool:
         ...
+    
     @staticmethod
-    def finetune(
-        job: TrainingJob,
-        model: str,
-        train_data: List[Dict[str, Any]],
-        train_data_format: Optional[Union[TrainDataFormat, str]],
-        train_kwargs: Optional[Dict[str, Any]] = ...,
-    ) -> str: ...
+    def launch(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...): # -> None:
+        ...
+    
+    @staticmethod
+    def kill(lm: LM, launch_kwargs: Optional[Dict[str, Any]] = ...): # -> None:
+        ...
+    
+    @staticmethod
+    def finetune(job: TrainingJob, model: str, train_data: List[Dict[str, Any]], train_data_format: Optional[Union[TrainDataFormat, str]], train_kwargs: Optional[Dict[str, Any]] = ...) -> str:
+        ...
+    
+
+

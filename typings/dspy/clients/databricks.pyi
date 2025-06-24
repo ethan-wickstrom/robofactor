@@ -6,40 +6,36 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 from dspy.clients.provider import Provider, TrainingJob
 from dspy.clients.utils_finetune import TrainDataFormat
 
-if TYPE_CHECKING: ...
+if TYPE_CHECKING:
+    ...
 logger = ...
-
 class TrainingJobDatabricks(TrainingJob):
-    def __init__(self, finetuning_run=..., *args, **kwargs) -> None: ...
-    def status(self):  # -> None:
+    def __init__(self, finetuning_run=..., *args, **kwargs) -> None:
         ...
+    
+    def status(self): # -> None:
+        ...
+    
+
 
 class DatabricksProvider(Provider):
     finetunable = ...
     TrainingJob = TrainingJobDatabricks
     @staticmethod
-    def is_provider_model(model: str) -> bool: ...
-    @staticmethod
-    def deploy_finetuned_model(
-        model: str,
-        data_format: Optional[TrainDataFormat] = ...,
-        databricks_host: Optional[str] = ...,
-        databricks_token: Optional[str] = ...,
-        deploy_timeout: int = ...,
-    ):  # -> None:
+    def is_provider_model(model: str) -> bool:
         ...
+    
     @staticmethod
-    def finetune(
-        job: TrainingJobDatabricks,
-        model: str,
-        train_data: List[Dict[str, Any]],
-        train_data_format: Optional[Union[TrainDataFormat, str]] = ...,
-        train_kwargs: Optional[Dict[str, Any]] = ...,
-    ) -> str: ...
-    @staticmethod
-    def upload_data(
-        train_data: List[Dict[str, Any]],
-        databricks_unity_catalog_path: str,
-        data_format: TrainDataFormat,
-    ):  # -> str:
+    def deploy_finetuned_model(model: str, data_format: Optional[TrainDataFormat] = ..., databricks_host: Optional[str] = ..., databricks_token: Optional[str] = ..., deploy_timeout: int = ...): # -> None:
         ...
+    
+    @staticmethod
+    def finetune(job: TrainingJobDatabricks, model: str, train_data: List[Dict[str, Any]], train_data_format: Optional[Union[TrainDataFormat, str]] = ..., train_kwargs: Optional[Dict[str, Any]] = ...) -> str:
+        ...
+    
+    @staticmethod
+    def upload_data(train_data: List[Dict[str, Any]], databricks_unity_catalog_path: str, data_format: TrainDataFormat): # -> str:
+        ...
+    
+
+

@@ -15,7 +15,6 @@ class OfferFeedback(Signature):
     The module will not see its own history, so it needs to rely on entirely concrete and actionable advice from you
     to avoid the same mistake on the same or similar inputs.
     """
-
     program_code: str = ...
     modules_defn: str = ...
     program_inputs: str = ...
@@ -28,15 +27,9 @@ class OfferFeedback(Signature):
     discussion: str = ...
     advice: dict[str, str] = ...
 
+
 class Refine(Module):
-    def __init__(
-        self,
-        module: Module,
-        N: int,
-        reward_fn: Callable[[dict, Prediction], float],
-        threshold: float,
-        fail_count: Optional[int] = ...,
-    ) -> None:
+    def __init__(self, module: Module, N: int, reward_fn: Callable[[dict, Prediction], float], threshold: float, fail_count: Optional[int] = ...) -> None:
         """
         Refines a module by running it up to N times with different temperatures and returns the best prediction.
 
@@ -74,13 +67,15 @@ class Refine(Module):
             ```
         """
         ...
-
-    def forward(self, **kwargs):  # -> None:
+    
+    def forward(self, **kwargs): # -> object | Any | None:
         ...
+    
 
-def inspect_modules(program):  # -> str:
+
+def inspect_modules(program): # -> str:
     ...
-def recursive_mask(
-    o,
-):  # -> dict[Any, Any | dict[Any, Any] | list[Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str] | list[Any | dict[Any, Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str:
+
+def recursive_mask(o): # -> dict[Any, Any | dict[Any, Any] | list[Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str] | list[Any | dict[Any, Any | dict[Any, Any] | list[Any] | tuple[Any, ...] | str] | list[Any] | tuple[Any, ...] | str] | tuple[Any, ...] | str:
     ...
+

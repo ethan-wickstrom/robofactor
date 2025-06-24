@@ -17,18 +17,4 @@ from dspy.teleprompt.teleprompt import Teleprompter
 from dspy.teleprompt.teleprompt_optuna import BootstrapFewShotWithOptuna
 from dspy.teleprompt.vanilla import LabeledFewShot
 
-__all__ = [
-    "AvatarOptimizer",
-    "BetterTogether",
-    "BootstrapFewShot",
-    "BootstrapFinetune",
-    "COPRO",
-    "Ensemble",
-    "KNNFewShot",
-    "MIPROv2",
-    "BootstrapFewShotWithRandomSearch",
-    "BootstrapFewShotWithOptuna",
-    "LabeledFewShot",
-    "InferRules",
-    "SIMBA",
-]
+__all__ = ["AvatarOptimizer", "BetterTogether", "BootstrapFewShot", "BootstrapFinetune", "COPRO", "Ensemble", "KNNFewShot", "MIPROv2", "BootstrapFewShotWithRandomSearch", "BootstrapFewShotWithOptuna", "LabeledFewShot", "InferRules", "SIMBA"]

@@ -59,6 +59,7 @@ class History(pydantic.BaseModel):
         outputs_with_history = predict(question="Are you sure?", history=history)
         ```
     """
-
     messages: list[dict[str, Any]]
     model_config = ...
+
+

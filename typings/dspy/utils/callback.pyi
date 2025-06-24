@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional
 
 ACTIVE_CALL_ID = ...
 logger = ...
-
 class BaseCallback:
     """A base class for defining callback handlers for DSPy components.
 
@@ -56,7 +55,7 @@ class BaseCallback:
     # No logging here because only `lm_1` has the callback set.
     ```
     """
-    def on_module_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    def on_module_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         """A handler triggered when forward() method of a module (subclass of dspy.Module) is called.
 
         Args:
@@ -66,10 +65,8 @@ class BaseCallback:
                 a key-value pair in a dictionary.
         """
         ...
-
-    def on_module_end(
-        self, call_id: str, outputs: Optional[Any], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_module_end(self, call_id: str, outputs: Optional[Any], exception: Optional[Exception] = ...): # -> None:
         """A handler triggered after forward() method of a module (subclass of dspy.Module) is executed.
 
         Args:
@@ -79,8 +76,8 @@ class BaseCallback:
             exception: If an exception is raised during the execution, it will be stored here.
         """
         ...
-
-    def on_lm_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def on_lm_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         """A handler triggered when __call__ method of dspy.LM instance is called.
 
         Args:
@@ -90,10 +87,8 @@ class BaseCallback:
                 a key-value pair in a dictionary.
         """
         ...
-
-    def on_lm_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_lm_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
         """A handler triggered after __call__ method of dspy.LM instance is executed.
 
         Args:
@@ -103,10 +98,8 @@ class BaseCallback:
             exception: If an exception is raised during the execution, it will be stored here.
         """
         ...
-
-    def on_adapter_format_start(
-        self, call_id: str, instance: Any, inputs: Dict[str, Any]
-    ):  # -> None:
+    
+    def on_adapter_format_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         """A handler triggered when format() method of an adapter (subclass of dspy.Adapter) is called.
 
         Args:
@@ -116,10 +109,8 @@ class BaseCallback:
                 a key-value pair in a dictionary.
         """
         ...
-
-    def on_adapter_format_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_adapter_format_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
         """A handler triggered after format() method of an adapter (subclass of dspy.Adapter) is called..
 
         Args:
@@ -129,10 +120,8 @@ class BaseCallback:
             exception: If an exception is raised during the execution, it will be stored here.
         """
         ...
-
-    def on_adapter_parse_start(
-        self, call_id: str, instance: Any, inputs: Dict[str, Any]
-    ):  # -> None:
+    
+    def on_adapter_parse_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         """A handler triggered when parse() method of an adapter (subclass of dspy.Adapter) is called.
 
         Args:
@@ -142,10 +131,8 @@ class BaseCallback:
                 a key-value pair in a dictionary.
         """
         ...
-
-    def on_adapter_parse_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_adapter_parse_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
         """A handler triggered after parse() method of an adapter (subclass of dspy.Adapter) is called.
 
         Args:
@@ -155,8 +142,8 @@ class BaseCallback:
             exception: If an exception is raised during the execution, it will be stored here.
         """
         ...
-
-    def on_tool_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def on_tool_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         """A handler triggered when a tool is called.
 
         Args:
@@ -166,10 +153,8 @@ class BaseCallback:
                 a key-value pair in a dictionary.
         """
         ...
-
-    def on_tool_end(
-        self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_tool_end(self, call_id: str, outputs: Optional[Dict[str, Any]], exception: Optional[Exception] = ...): # -> None:
         """A handler triggered after a tool is executed.
 
         Args:
@@ -179,8 +164,8 @@ class BaseCallback:
             exception: If an exception is raised during the execution, it will be stored here.
         """
         ...
-
-    def on_evaluate_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]):  # -> None:
+    
+    def on_evaluate_start(self, call_id: str, instance: Any, inputs: Dict[str, Any]): # -> None:
         """A handler triggered when evaluation is started.
 
         Args:
@@ -190,10 +175,8 @@ class BaseCallback:
                 a key-value pair in a dictionary.
         """
         ...
-
-    def on_evaluate_end(
-        self, call_id: str, outputs: Optional[Any], exception: Optional[Exception] = ...
-    ):  # -> None:
+    
+    def on_evaluate_end(self, call_id: str, outputs: Optional[Any], exception: Optional[Exception] = ...): # -> None:
         """A handler triggered after evaluation is executed.
 
         Args:
@@ -203,9 +186,10 @@ class BaseCallback:
             exception: If an exception is raised during the execution, it will be stored here.
         """
         ...
+    
 
-def with_callbacks(
-    fn,
-):  # -> _Wrapped[..., Any, ..., CoroutineType[Any, Any, Any]] | _Wrapped[..., Any, ..., Any]:
+
+def with_callbacks(fn): # -> _Wrapped[..., Any, ..., CoroutineType[Any, Any, Any]] | _Wrapped[..., Any, ..., Any]:
     """Decorator to add callback functionality to instance methods."""
     ...
+
