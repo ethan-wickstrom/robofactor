@@ -14,12 +14,14 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
 
-from . import config, ui, utils
-from .analysis import extract_python_code
-from .dspy_modules import CodeRefactor, RefactoringEvaluator
-from .models import TestCase
-from .evaluation import evaluate_refactored_code
-from .training.training_loader import load_training_data
+from robofactor import utils
+from robofactor.app import config, ui
+from robofactor.evaluation import evaluate_refactored_code
+from robofactor.parsing.analysis import extract_python_code
+from robofactor.parsing.models import TestCase
+from robofactor.refactoring.evaluator import RefactoringEvaluator
+from robofactor.refactoring.module import CodeRefactor
+from robofactor.training.training_loader import load_training_data
 
 app = typer.Typer()
 

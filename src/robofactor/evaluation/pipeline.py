@@ -3,12 +3,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import NamedTuple
 
-from pydantic import BaseModel, Field
 from returns.result import Failure, Result, Success, safe
 
-from . import analysis
-from .json.types import JSON
-from .models import TestCase, CodeQualityScores
+from . import checkers
+from ..parsing.models import CodeQualityScores, TestCase
 
 
 
@@ -39,7 +37,7 @@ def _check_syntax(code: str) -> Result[str, str]:
     output into a `Result` monad, which is more suitable for functional
     pipelines.
     """
-    is_valid, func_name, err = analysis.check_syntax(code)
+    is_valid, func_name, err = checkers.check_syntax(code)
     if not is_valid or not func_name:
         return Failure(f"Syntax Check Failed: {err or 'No function found.'}")
     return Success(func_name)
@@ -53,7 +51,7 @@ def _check_quality(code: str, func_name: str) -> CodeQualityScores:
     The `@safe` decorator automatically wraps this function's execution in a
     `Result` container, capturing any exceptions as a `Failure`.
     """
-    return analysis.check_code_quality(code, func_name)
+    return checkers.check_code_quality(code, func_name)
 
 
 @safe
@@ -68,7 +66,7 @@ def _check_functional_correctness(
     if not tests:
         return FunctionalCheckResult(passed_tests=0, total_tests=0)
 
-    passed_tests = analysis.check_functional_correctness(code, func_name, tests)
+    passed_tests = checkers.check_functional_correctness(code, func_name, tests)
     return FunctionalCheckResult(passed_tests=passed_tests, total_tests=len(tests))
 
 

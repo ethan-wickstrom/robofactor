@@ -14,8 +14,9 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from . import analysis, config
-from .evaluation import EvaluationResult
+from ..parsing import analysis
+from . import config
+from ..evaluation import EvaluationResult
 
 
 def display_refactoring_process(console: Console, prediction: dspy.Prediction) -> None:

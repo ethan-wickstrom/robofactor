@@ -1,5 +1,4 @@
 import ast
-import enum
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,97 +6,18 @@ from pathlib import Path
 from returns.io import impure_safe
 from returns.result import safe
 
+from .models import (
+    ClassContext,
+    Decorator,
+    FunctionContext,
+    ModuleContext,
+    NestedContext,
+    Parameter,
+    ParameterKind,
+)
+
 # Type alias for function definition AST nodes to improve readability.
-FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
-
-
-class ParameterKind(enum.Enum):
-    """Enumeration for the different kinds of function parameters."""
-
-    POSITIONAL_ONLY = "positional_only"
-    POSITIONAL_OR_KEYWORD = "positional_or_keyword"
-    VAR_POSITIONAL = "var_positional"
-    KEYWORD_ONLY = "keyword_only"
-    VAR_KEYWORD = "var_keyword"
-
-
-@dataclass(frozen=True)
-class Parameter:
-    """
-    Represents a function parameter with its name, kind, and optional details.
-
-    Attributes:
-        name: The name of the parameter.
-        kind: The kind of the parameter (e.g., positional-only).
-        annotation: The type annotation as a string, if present.
-        default: The default value as a string, if present.
-    """
-
-    name: str
-    kind: ParameterKind
-    annotation: str | None = None
-    default: str | None = None
-
-
-@dataclass(frozen=True)
-class Decorator:
-    """
-    Represents a function decorator.
-
-    Attributes:
-        name: The name of the decorator.
-        args: A tuple of arguments passed to the decorator, as strings.
-    """
-
-    name: str
-    args: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class FunctionContext:
-    """Represents the context where a function is defined (base class)."""
-
-    pass
-
-
-@dataclass(frozen=True)
-class ModuleContext(FunctionContext):
-    """
-    Represents a function defined at the module level.
-
-    Attributes:
-        module_name: The name of the module.
-    """
-
-    module_name: str
-
-
-@dataclass(frozen=True)
-class ClassContext(FunctionContext):
-    """
-    Represents a function defined within a class.
-
-    Attributes:
-        class_name: The name of the class.
-        parent_context: The context in which the class is defined.
-    """
-
-    class_name: str
-    parent_context: FunctionContext
-
-
-@dataclass(frozen=True)
-class NestedContext(FunctionContext):
-    """
-    Represents a function defined within another function.
-
-    Attributes:
-        parent_function: The name of the enclosing function.
-        parent_context: The context of the enclosing function.
-    """
-
-    parent_function: str
-    parent_context: FunctionContext
+type FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
 
 
 @dataclass(frozen=True)

@@ -6,8 +6,8 @@ from typing import TypeGuard, cast
 
 import dspy
 
-from ..config import TRAINING_DATA_FILE
-from ..models import TestCase
+from ..app.config import TRAINING_DATA_FILE
+from ..parsing.models import TestCase
 from ..json.is_json_list import is_json_list
 from ..json.types import JSON, JSONObject
 
