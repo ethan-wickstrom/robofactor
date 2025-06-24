@@ -1,5 +1,6 @@
 import warnings
 
+
 def suppress_pydantic_warnings():
     # TODO: Remove this warning suppression once DSPy fixes Pydantic serialization compatibility.
     #
@@ -31,4 +32,4 @@ def suppress_pydantic_warnings():
     #
     # Last checked: 19 June 2025
     # DSPy version when added: 2.6.27
-    warnings.filterwarnings('ignore', category=UserWarning, module='pydantic.main')
+    warnings.filterwarnings("ignore", category=UserWarning, module="pydantic.main")

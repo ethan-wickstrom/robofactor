@@ -9,6 +9,7 @@ from pathlib import Path
 
 # --- File Paths ---
 OPTIMIZER_FILENAME: Path = Path("optimized/")
+TRAINING_DATA_FILE = Path("training/training_data.json")
 
 # --- DSPy Model Configuration ---
 DEFAULT_TASK_LLM: str = "gemini/gemini-2.5-flash-lite-preview-06-17"

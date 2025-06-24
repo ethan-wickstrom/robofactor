@@ -1,6 +1,6 @@
 import ast
 import enum
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -162,7 +162,7 @@ class FunctionInfo:
             is_async=isinstance(node, ast.AsyncFunctionDef),
             context=context,
             docstring=extract_docstring(node),
-            return_annotation=ast_node_to_source(node.returns) if node.returns else None,
+            return_annotation=(ast_node_to_source(node.returns) if node.returns else None),
         )
 
 
@@ -184,12 +184,12 @@ def ast_node_to_source(node: ast.AST) -> str:
         return repr(node)
 
 
-def extract_decorators(decorators: list[ast.expr]) -> tuple[Decorator, ...]:
+def extract_decorators(decorators: Sequence[ast.expr]) -> tuple[Decorator, ...]:
     """
-    Extract decorator information from an AST decorator list.
+    Extract decorator information from an AST decorator Sequence.
 
     Args:
-        decorators: A list of decorator nodes from an AST function definition.
+        decorators: A Sequence of decorator nodes from an AST function definition.
 
     Returns:
         A tuple of Decorator objects.
@@ -527,7 +527,7 @@ def format_function_signature(func: FunctionInfo) -> str:
             res += f" = {p.default}"
         return res
 
-    param_parts: list[str] = []
+    param_parts: Sequence[str] = []
     pos_only_ended = False
     var_pos_added = False
 

@@ -1,12 +1,3 @@
-"""
-Utility functions for static and dynamic code analysis.
-
-This module includes functions for syntax validation, quality scoring (linting,
-complexity, typing, docstrings), and functional correctness checking. These
-functions are designed to be pure or to have their side effects managed by
-callers, often using decorators like `@safe` from the `returns` library.
-"""
-
 import ast
 import json
 import os
@@ -14,12 +5,16 @@ import re
 import subprocess
 import tempfile
 import textwrap
+from collections.abc import Sequence
 from pathlib import Path
+from .models import TestCase
 
 import dspy
 
+from .models import CodeQualityScores
+
 from . import config
-from .evaluation import CodeQualityScores, TestCase
+from .json.types import JSON
 
 
 def extract_python_code(text: str) -> str:
@@ -77,7 +72,7 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
     or `@impure_safe` to handle potential exceptions.
     """
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
-        tmp.write(code)
+        _ = tmp.write(code)
         tmp_path = Path(tmp.name)
 
     try:
@@ -143,7 +138,7 @@ def _build_execution_script(func_name: str, test_case: TestCase) -> str:
     )
 
 
-def check_functional_correctness(code: str, func_name: str, test_cases: list[TestCase]) -> int:
+def check_functional_correctness(code: str, func_name: str, test_cases: Sequence[TestCase]) -> int:
     """
     Executes test cases against code in a sandboxed Python interpreter.
 
@@ -164,10 +159,10 @@ def check_functional_correctness(code: str, func_name: str, test_cases: list[Tes
             try:
                 exec_script = _build_execution_script(func_name, test)
                 actual_output_json = interp.execute(exec_script)
-                actual_output = json.loads(actual_output_json)
+                actual_output: JSON = json.loads(actual_output_json)
 
                 # Normalize expected output to ensure consistent comparison.
-                normalized_expected_output = json.loads(json.dumps(test.expected_output))
+                normalized_expected_output: JSON = json.loads(json.dumps(test.expected_output))
                 if actual_output == normalized_expected_output:
                     passed_count += 1
             except Exception:

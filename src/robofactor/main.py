@@ -1,6 +1,7 @@
 """
 Main entry point for the command-line interface (CLI) of the refactoring tool.
 """
+
 from pathlib import Path
 from typing import Annotated
 
@@ -15,8 +16,10 @@ from rich.syntax import Syntax
 
 from . import config, ui, utils
 from .analysis import extract_python_code
-from .dspy_modules import CodeRefactor, RefactoringEvaluator, load_training_data
-from .evaluation import TestCase, evaluate_refactored_code
+from .dspy_modules import CodeRefactor, RefactoringEvaluator
+from .models import TestCase
+from .evaluation import evaluate_refactored_code
+from .training.training_loader import load_training_data
 
 app = typer.Typer()
 
@@ -28,13 +31,17 @@ def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -
     if tracing:
         console.print(f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]")
         mlflow.set_tracking_uri(mlflow_uri)
-        mlflow.set_experiment(mlflow_experiment)
-        mlflow.dspy.autolog(log_compiles=True, log_traces=True)
+        _ = mlflow.set_experiment(mlflow_experiment)
+        _ = mlflow.autolog()
     return console
 
 
 def _load_or_compile_model(
-    optimizer_path: Path, optimize: bool, console: Console, prompt_llm: dspy.LM, task_llm: dspy.LM
+    optimizer_path: Path,
+    optimize: bool,
+    console: Console,
+    prompt_llm: dspy.LM,
+    task_llm: dspy.LM,
 ) -> dspy.Module:
     """Loads an optimized DSPy model or compiles a new one."""
     refactorer = CodeRefactor()
@@ -57,7 +64,7 @@ def _load_or_compile_model(
             num_threads=8,
         )
         teleprompter.compile(
-            refactorer, trainset=load_training_data(), requires_permission_to_run=False
+            refactorer, trainset=list(load_training_data()), requires_permission_to_run=False
         )
         console.print(f"Optimization complete. Saving to {optimizer_path}...")
         self_correcting_refactorer.save(str(optimizer_path), save_program=True)
@@ -96,14 +103,14 @@ def _run_refactoring_on_file(
 
     evaluation = evaluate_refactored_code(refactored_code, tests)
 
-    match evaluation:
+    match evaluation:  # type: ignore[reportMatchNotExhaustive]
         case Success(eval_data):
             ui.display_evaluation_results(console, eval_data)
             if write:
                 console.print(
                     f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]"
                 )
-                script_path.write_text(refactored_code, encoding="utf-8")
+                _ = script_path.write_text(refactored_code, encoding="utf-8")
                 console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
         case Failure(error_message):
             console.print(
@@ -141,7 +148,9 @@ def main(
         False, "--optimize", help="Force re-optimization of the DSPy model."
     ),
     task_llm_model: str = typer.Option(
-        config.DEFAULT_TASK_LLM, "--task-llm", help="Model for the main refactoring task."
+        config.DEFAULT_TASK_LLM,
+        "--task-llm",
+        help="Model for the main refactoring task.",
     ),
     prompt_llm_model: str = typer.Option(
         config.DEFAULT_PROMPT_LLM,
@@ -150,10 +159,14 @@ def main(
     ),
     tracing: bool = typer.Option(True, "--tracing/--no-tracing", help="Enable MLflow tracing."),
     mlflow_uri: str = typer.Option(
-        config.DEFAULT_MLFLOW_TRACKING_URI, "--mlflow-uri", help="MLflow tracking server URI."
+        config.DEFAULT_MLFLOW_TRACKING_URI,
+        "--mlflow-uri",
+        help="MLflow tracking server URI.",
     ),
     mlflow_experiment: str = typer.Option(
-        config.DEFAULT_MLFLOW_EXPERIMENT_NAME, "--mlflow-experiment", help="MLflow experiment name."
+        config.DEFAULT_MLFLOW_EXPERIMENT_NAME,
+        "--mlflow-experiment",
+        help="MLflow experiment name.",
     ),
 ):
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""

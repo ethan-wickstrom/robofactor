@@ -1,3 +1,4 @@
+
 """
 Presentation logic for displaying results in the console.
 
@@ -22,11 +23,11 @@ def display_refactoring_process(console: Console, prediction: dspy.Prediction) -
     console.print(Panel(prediction.analysis, title="[bold cyan]Analysis[/bold cyan]", expand=False))
 
     plan_text = Text()
-    plan_text.append("Summary: ", style="bold")
-    plan_text.append(prediction.refactoring_summary)
-    plan_text.append("\n\n")
+    _ = plan_text.append("Summary: ", style="bold")
+    _ = plan_text.append(prediction.refactoring_summary)
+    _ = plan_text.append("\n\n")
     for i, step in enumerate(prediction.plan_steps, 1):
-        plan_text.append(f"{i}. {step}\n")
+        _ = plan_text.append(f"{i}. {step}\n")
     console.print(Panel(plan_text, title="[bold cyan]Refactoring Plan[/bold cyan]"))
 
     console.print(
