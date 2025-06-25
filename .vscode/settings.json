@@ -3,11 +3,13 @@
   "windsurfPyright.analysis.typeCheckingMode": "basedpyright",
   "editor.defaultFormatter": "Codeium.windsurfPyright",
   "windsurfPyright.analysis.autoSearchPaths": true,
-  "windsurfPyright.analysis.stubPath": "typings",
   "windsurfPyright.analysis.useLibraryCodeForTypes": true,
   "python.terminal.shellIntegration.enabled": true,
   "windsurfPyright.analysis.inlayHints.callArgumentNames": false,
   "windsurfPyright.analysis.inlayHints.functionReturnTypes": false,
   "windsurfPyright.analysis.inlayHints.genericTypes": false,
-  "windsurfPyright.analysis.inlayHints.variableTypes": false
+  "windsurfPyright.analysis.inlayHints.variableTypes": false,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  }
 }

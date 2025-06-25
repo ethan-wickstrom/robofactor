@@ -25,6 +25,8 @@ dependencies = [
   "toml>=0.10.2",
   "returns>=0.25.0",
   "dspy>=3.0.0b1",
+  "networkx>=3.4.2",
+  "grep-ast>=0.9.0",
 ]
 
 [project.urls]
@@ -73,10 +75,10 @@ exclude = [
   "src/experimental",
   "src/typestubs",
 ]
-stubPath = "typings"
 reportUnknownMemberType = false
 reportUnknownVariableType = false
 reportUnknownArgumentType = false
+reportMissingTypeStubs = false
 
 [tool.basedpyright.defineConstant]
 DEBUG = true
