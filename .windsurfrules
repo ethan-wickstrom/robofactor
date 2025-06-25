@@ -11,6 +11,8 @@ Adopt a purely functional, stateless approach:
 - Structure logic as input-process-output pipelines.
 - Ensure all operations are idempotent and safely repeatable.
 
+## RULES
+
 ### Type System & Data Modeling
 
 Use the type system to enforce correctness and make invalid states unrepresentable.
@@ -423,16 +425,3 @@ def parse_int(value: str) -> Result[int, ValueError]:
 5. **Type check continuously** - Fix type errors immediately
 
 This workspace emphasizes functional programming principles, type safety, and clear separation of concerns. Every code change should advance these goals while maintaining zero technical debt.
-
-## [!REMINDER]: Use Perplexity in all tasks
-
-Always begin each response with atleast 1 call to perplexity.
-
-Ask perplexity several questions to PRIOR TO BEGINNING each task the user gives you.
-
-> Note: Send as many questions as needed to perplexity. Make sure each questions is precise and is IN ITS OWN TOOL CALL. Do not ask multiple questions in the same tool call. Make sure to provide perplexity all the context it needs.
-> Note: If you come across any other concerns or problems while working on the user's code, just ask perplexity more questions as needed! Frequently consult with perplexity to get the best possible information.
-> Note: Send a batch of countless calls to perplexity to get many answers in parallel to all of your questions.
-> Note: Send questions about different frameworks separately from questions about other frameworks. Questions must be about the individual frameworks rather than the bridging between the frameworks (For example: Elysia has gained some popularity. However, no one really uses Effect with Elysia yet. Be epistemically humble and ask all questions.)
-
-While you must begin each response with atleast 1 call to perplexity, you may skip calls to perplexity if you have already asked all the questions you need to or if your previous interaction with perplexity was recent enough.
