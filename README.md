@@ -27,33 +27,35 @@ Follow these steps to get Robofactor set up on your local machine.
 
 - Python 3.12 or higher
 - [uv](https://github.com/astral-sh/uv) package manager. If you don't have it, you can install it via pip:
+
   ```bash
   pip install uv
   ```
 
 ### Step-by-Step Guide
 
-1.  **Clone the repository:**
+1. **Clone the repository:**
 
-    ```bash
-    git clone https://github.com/ethan-wickstrom/robofactor.git
-    cd robofactor
-    ```
+   ```bash
+   git clone https://github.com/ethan-wickstrom/robofactor.git
+   cd robofactor
+   ```
 
-2.  **Install dependencies:**
+2. **Install dependencies:**
 
-    This project uses `uv` to manage dependencies and virtual environments.
+   This project uses `uv` to manage dependencies and virtual environments.
 
-    - For a **standard installation** (to use the tool):
+   - For a **standard installation** (to use the tool):
 
-      ```bash
-      uv sync --no-dev
-      ```
+     ```bash
+     uv sync --no-dev
+     ```
 
-    - For a **development installation** (includes testing and linting tools):
-      ```bash
-      uv sync --all-groups
-      ```
+   - For a **development installation** (includes testing and linting tools):
+
+     ```bash
+     uv sync --all-groups
+     ```
 
 ## 🚀 Usage
 
@@ -129,9 +131,9 @@ The AI's suggested refactoring is never trusted blindly. Before any changes are 
 
 - **Module:** `src/robofactor/evaluation.py`
 - **Process:** The evaluation consists of several automated checks:
-  1.  **Syntax Check**: The refactored code is parsed again to ensure it is valid Python syntax.
-  2.  **Code Quality Analysis**: The code is linted using `flake8` to check for style guide violations, logical errors, and code smells.
-  3.  **Functional Correctness**: The original function's test cases are executed against the refactored code in a sandboxed environment. This critical step verifies that the refactoring did not alter the function's behavior or introduce regressions.
+  1. **Syntax Check**: The refactored code is parsed again to ensure it is valid Python syntax.
+  2. **Code Quality Analysis**: The code is linted using `flake8` to check for style guide violations, logical errors, and code smells.
+  3. **Functional Correctness**: The original function's test cases are executed against the refactored code in a sandboxed environment. This critical step verifies that the refactoring did not alter the function's behavior or introduce regressions.
 
 Only if the refactored code passes all three checks is the process considered a success.
 
