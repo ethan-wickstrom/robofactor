@@ -5,12 +5,8 @@ from typing import NamedTuple
 
 from returns.result import Failure, Result, Success, safe
 
-from . import checkers
 from ..parsing.models import CodeQualityScores, TestCase
-
-
-
-
+from . import checkers
 
 
 class FunctionalCheckResult(NamedTuple):
@@ -70,9 +66,7 @@ def _check_functional_correctness(
     return FunctionalCheckResult(passed_tests=passed_tests, total_tests=len(tests))
 
 
-def evaluate_refactored_code(
-    code: str, tests: Sequence[TestCase]
-) -> Result[EvaluationResult, str]:
+def evaluate_refactored_code(code: str, tests: Sequence[TestCase]) -> Result[EvaluationResult, str]:
     """
     Performs a full evaluation of the refactored code.
 

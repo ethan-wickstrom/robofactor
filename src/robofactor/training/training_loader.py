@@ -1,18 +1,19 @@
-import json
+from __future__ import annotations
+
+import logging
 from collections.abc import Sequence
-from logging import getLogger
-from pathlib import Path
-from typing import TypeGuard, cast
+from typing import TypeGuard
 
 import dspy
+from pydantic import ValidationError
 
-from ..app.config import TRAINING_DATA_FILE
-from ..parsing.models import TestCase
-from ..json.is_json_list import is_json_list
-from ..json.types import JSON, JSONObject
+from robofactor.app.config import TRAINING_DATA_FILE
+from robofactor.json.types import JSON, JSONObject
+
+from .models import TrainingEntry, TrainingSetAdapter
 
 FAILURE_SCORE = 0.0
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def is_training_item(x: JSON) -> TypeGuard[JSONObject]:
@@ -30,35 +31,29 @@ def is_training_item(x: JSON) -> TypeGuard[JSONObject]:
     )
 
 
+def is_json_object(x: JSON) -> TypeGuard[JSONObject]:
+    return isinstance(x, dict)
+
+
 def load_training_data() -> list[dspy.Example]:
-    data_path = Path(__file__).parent / TRAINING_DATA_FILE
+    """Return the validated training set as a list of DSPy ``Example`` objects."""
+
     try:
-        # CAST the untyped json.loads → JSON
-        raw = cast(JSON, json.loads(data_path.read_text(encoding="utf-8")))
+        raw_text: str = TRAINING_DATA_FILE.read_text(encoding="utf-8")
     except FileNotFoundError:
-        logger.error(f"Training data file not found: {data_path}")
-        return []
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in training data: {e}")
+        logger.error("Training data file not found: %s", TRAINING_DATA_FILE)
         return []
 
-    # NARROW to actual Sequence[JSON]
-    if not is_json_list(raw):
-        logger.error(f"Expected top-level array, got {type(raw).__name__}")
+    try:
+        entries: list[TrainingEntry] = TrainingSetAdapter.validate_json(raw_text)
+    except ValidationError as exc:
+        logger.error("Invalid JSON in training data: %s", exc)
         return []
 
-    items: list[dspy.Example] = []
-    for idx, entry in enumerate(raw):
-        if not is_training_item(entry):
-            logger.error(f"Invalid training entry at index {idx}: {entry!r}")
-            continue
-        code = entry["code_snippet"]
-        raw_tcs = entry.get("test_cases", [])
-        tcs = cast(Sequence[JSONObject], raw_tcs)
-        items.append(
-            dspy.Example(
-                code_snippet=code,
-                test_cases=[TestCase(**tc) for tc in tcs],
-            ).with_inputs("code_snippet")
-        )
-    return items
+    return [
+        dspy.Example(
+            code_snippet=entry.code_snippet,
+            test_cases=list(entry.test_cases),  # Already validated TestCase models
+        ).with_inputs("code_snippet")
+        for entry in entries
+    ]

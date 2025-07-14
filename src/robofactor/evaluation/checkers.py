@@ -17,8 +17,8 @@ from pathlib import Path
 
 import dspy
 
-from ..app import config
-from ..parsing.models import CodeQualityScores, TestCase
+from robofactor.app import config
+from robofactor.parsing.models import CodeQualityScores, TestCase
 
 
 def check_syntax(code: str) -> tuple[bool, str | None, str | None]:
@@ -50,15 +50,11 @@ def _get_ast_based_scores(tree: ast.AST, func_name: str | None) -> tuple[float, 
     if not all_funcs:
         return 0.0, 0.0
 
-    target_funcs = (
-        [f for f in all_funcs if f.name == func_name] if func_name else all_funcs
-    )
+    target_funcs = [f for f in all_funcs if f.name == func_name] if func_name else all_funcs
     if not target_funcs:
         return 0.0, 0.0
 
-    docstring_score = sum(1.0 for f in target_funcs if ast.get_docstring(f)) / len(
-        target_funcs
-    )
+    docstring_score = sum(1.0 for f in target_funcs if ast.get_docstring(f)) / len(target_funcs)
 
     typed_elements, typeable_elements = 0, 0
     for func_node in target_funcs:
@@ -90,9 +86,7 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
         subprocess.CalledProcessError: If the flake8 command fails.
         SyntaxError: If the code cannot be parsed into an AST.
     """
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".py", delete=False, encoding="utf-8"
-    ) as tmp:
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
         _ = tmp.write(code)
         tmp_path = Path(tmp.name)
 
@@ -117,9 +111,7 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
         ]
 
         complexity_score = 1.0 if not complexity_warnings else 0.0
-        linting_score = max(
-            0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues))
-        )
+        linting_score = max(0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues)))
 
         tree = ast.parse(code)
         docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
@@ -155,9 +147,7 @@ def _build_execution_script(func_name: str, test_case: TestCase) -> str:
     )
 
 
-def check_functional_correctness(
-    code: str, func_name: str, test_cases: Sequence[TestCase]
-) -> int:
+def check_functional_correctness(code: str, func_name: str, test_cases: Sequence[TestCase]) -> int:
     """
     Executes test cases against code in a sandboxed Python interpreter.
 
@@ -183,9 +173,7 @@ def check_functional_correctness(
                 exec_script = _build_execution_script(func_name, test)
                 actual_output_json = interp.execute(exec_script)
                 actual_output = json.loads(actual_output_json)
-                normalized_expected_output = json.loads(
-                    json.dumps(test.expected_output)
-                )
+                normalized_expected_output = json.loads(json.dumps(test.expected_output))
                 if actual_output == normalized_expected_output:
                     passed_count += 1
             except Exception:
