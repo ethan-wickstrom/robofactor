@@ -4,7 +4,7 @@ Defines the core DSPy module for the code refactoring pipeline.
 
 import dspy
 
-from .signatures import CodeAnalysis, RefactoringPlan, RefactoredCode
+from .signatures import CodeAnalysis, RefactoredCode, RefactoringPlan
 
 
 class CodeRefactor(dspy.Module):

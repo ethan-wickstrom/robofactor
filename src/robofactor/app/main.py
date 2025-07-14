@@ -2,8 +2,9 @@
 Main entry point for the command-line interface (CLI) of the refactoring tool.
 """
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import dspy
 import mlflow
@@ -17,6 +18,7 @@ from rich.syntax import Syntax
 from robofactor import utils
 from robofactor.app import config, ui
 from robofactor.evaluation import evaluate_refactored_code
+from robofactor.json.types import JSONObject
 from robofactor.parsing.analysis import extract_python_code
 from robofactor.parsing.models import TestCase
 from robofactor.refactoring.evaluator import RefactoringEvaluator
@@ -49,7 +51,9 @@ def _load_or_compile_model(
     refactorer = CodeRefactor()
     self_correcting_refactorer = dspy.Refine(
         module=refactorer,
-        reward_fn=RefactoringEvaluator(),
+        reward_fn=cast(
+            Callable[[JSONObject, dspy.Prediction], float], RefactoringEvaluator().forward
+        ),
         threshold=config.REFINEMENT_THRESHOLD,
         N=config.REFINEMENT_COUNT,
     )
@@ -98,7 +102,7 @@ def _run_refactoring_on_file(
     refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
         "code_snippet"
     )
-    prediction = refactorer(**refactor_example.inputs())
+    prediction = cast(dspy.Prediction, refactorer(**refactor_example.inputs()))
     ui.display_refactoring_process(console, prediction)
 
     refactored_code = extract_python_code(prediction.refactored_code)
@@ -107,7 +111,7 @@ def _run_refactoring_on_file(
 
     evaluation = evaluate_refactored_code(refactored_code, tests)
 
-    match evaluation:  # type: ignore[reportMatchNotExhaustive]
+    match evaluation:
         case Success(eval_data):
             ui.display_evaluation_results(console, eval_data)
             if write:
@@ -127,34 +131,25 @@ def _run_refactoring_on_file(
                 console.print(
                     "[bold yellow]Skipping write-back due to evaluation failure.[/bold yellow]"
                 )
+        case _:
+            # Fallback case for static type checkers.
+            pass
 
 
 @app.command()
 def main(
     path: Annotated[
-        Path | None,
-        typer.Argument(
-            help="Path to the Python file to refactor.",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
-            resolve_path=True,
-        ),
+        Path | None, typer.Argument(help="Path to Python file to refactor.", exists=True)
     ] = None,
     self_refactor: bool = typer.Option(
         False, "--dog-food", help="Self-refactor the script you are running."
     ),
-    write: bool = typer.Option(
-        False, "--write", help="Write the refactored code back to the file."
-    ),
+    write: bool = typer.Option(False, "--write", help="Write refactored code back to the file."),
     optimize: bool = typer.Option(
         False, "--optimize", help="Force re-optimization of the DSPy model."
     ),
     task_llm_model: str = typer.Option(
-        config.DEFAULT_TASK_LLM,
-        "--task-llm",
-        help="Model for the main refactoring task.",
+        config.DEFAULT_TASK_LLM, "--task-llm", help="Model for the main refactoring task."
     ),
     prompt_llm_model: str = typer.Option(
         config.DEFAULT_PROMPT_LLM,
@@ -163,14 +158,10 @@ def main(
     ),
     tracing: bool = typer.Option(True, "--tracing/--no-tracing", help="Enable MLflow tracing."),
     mlflow_uri: str = typer.Option(
-        config.DEFAULT_MLFLOW_TRACKING_URI,
-        "--mlflow-uri",
-        help="MLflow tracking server URI.",
+        config.DEFAULT_MLFLOW_TRACKING_URI, "--mlflow-uri", help="MLflow tracking server URI."
     ),
     mlflow_experiment: str = typer.Option(
-        config.DEFAULT_MLFLOW_EXPERIMENT_NAME,
-        "--mlflow-experiment",
-        help="MLflow experiment name.",
+        config.DEFAULT_MLFLOW_EXPERIMENT_NAME, "--mlflow-experiment", help="MLflow experiment name."
     ),
 ):
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""
@@ -184,15 +175,15 @@ def main(
         config.OPTIMIZER_FILENAME, optimize, console, prompt_llm, task_llm
     )
 
-    target_path: Path | None = None
+    file_path: Path | None = None
     if self_refactor:
-        target_path = Path(__file__)
+        file_path = Path(__file__)
         console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
     elif path:
-        target_path = path
+        file_path = path
 
-    if target_path:
-        _run_refactoring_on_file(console, refactorer, target_path, write)
+    if file_path:
+        _run_refactoring_on_file(console, refactorer, file_path, write)
     else:
         console.print(
             "[bold red]Error:[/bold red] Please provide a path to a file or use --dog-food."
