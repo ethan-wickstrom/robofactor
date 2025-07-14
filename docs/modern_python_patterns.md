@@ -39,4 +39,4 @@ if is_email(raw):
     send_mail(raw)
 ```
 
-No casts, no runtime surprises.
+No casts, no runtime surprises. Never use Any, cast, or # type: ignore for type fixes.
