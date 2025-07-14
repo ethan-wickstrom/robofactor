@@ -46,7 +46,7 @@ build-backend = "hatchling.build"
 packages = ["src/robofactor"]
 
 [dependency-groups]
-dev = ["basedpyright>=1.29.4", "isort>=6.0.1", "ruff>=0.11.13", "toml>=0.10.2"]
+dev = ["basedpyright>=1.29.4", "ruff>=0.11.13", "toml>=0.10.2"]
 
 [tool.ruff]
 line-length = 100
@@ -111,12 +111,6 @@ exclude_lines = [
   "raise NotImplementedError",
   "if __name__ == .__main__.:",
 ]
-
-[tool.isort]
-profile = "black"
-line_length = 100
-multi_line_output = 3
-include_trailing_comma = true
 
 [tool.uv.sources]
 dspy = { git = "https://github.com/stanfordnlp/dspy.git" }
