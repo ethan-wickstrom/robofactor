@@ -1,427 +1,92 @@
-# Robofactor Workspace Rules
+# Robofactor Quick-Start
 
-Adopt a purely functional, stateless approach:
+## 1. Write Pure Functions Whenever Possible
 
-- Write pure, deterministic functions with no side effects; outputs depend only on inputs.
-- Favor immutability—never mutate data; always create new values.
-- Represent all effects and failures explicitly using containers like IO, Result, or Maybe.
-- Compose small, single-purpose functions using flow from returns.pipeline.
-- Declare all dependencies explicitly; never use global state or hidden context.
-- Validate inputs at boundaries and return structured error values instead of raising exceptions.
-- Structure logic as input-process-output pipelines.
-- Ensure all operations are idempotent and safely repeatable.
+- **No side effects** → wrap I/O in `IO[T]` or `IOResult[T, E]`
+- **No mutation** → return new values
+- **No exceptions** → return `Result[T, E]` or `Maybe[T]`
 
-## RULES
+Push all side effects to CLI entrypoint.
 
-### Type System & Data Modeling
-
-Use the type system to enforce correctness and make invalid states unrepresentable.
-
-- **Use Modern Generic Syntax (PEP 695):** Define generic functions, classes, and type aliases using the `[T]` syntax. Avoid the legacy `TypeVar` and `Generic` from the `typing` module unless required for variance control.
-
-  ```python
-  # Generic class and function
-  class Stack[T]:
-      ...
-  def first[T](items: Sequence[T]) -> Maybe[T]:
-      ...
-
-  # Generic type alias
-  type Result[T, E] = Success[T] | Failure[E]
-  ```
-
-- **Define Algebraic Data Types (ADTs):**
-  - **Product Types:** Use `@dataclass(frozen=True, slots=True)` to create immutable structured data records.
-  - **Sum Types:** Use `|` (union types) to define a type that can be one of several distinct variants.
-- **Use Abstract Collection Types in Signatures:** For function parameters, use read-only abstract types from `collections.abc` (e.g., `Sequence`, `Mapping`, `Iterable`). Never use mutable concrete types like `list` or `dict` in function signatures.
-- **Use Precise Type Annotations:**
-  - `Final`: For constants that must not be reassigned.
-  - `Literal`: For variables that must hold one of a few specific values.
-  - `TypedDict`: For dictionary-like data with a defined structure.
-  - `Protocol`: For structural subtyping (duck typing).
-  - `TypeIs`: Create type guard functions that narrow types within a conditional block (PEP 742).
-- **Create Semantic Type Aliases:** Use the `type` keyword to create distinct names for primitive types to improve clarity (e.g., `type UserId = int`).
-
-### Function Design & Composition
-
-Design functions for clarity, testability, and composability.
-
-- **Enforce Keyword-Only Arguments:** Use the `*` separator in function signatures to force callers to use keyword arguments, enhancing clarity.
-
-  ```python
-  def create_user(*, name: str, email: str) -> User: ...
-
-  ```
-
-- **Limit Function Complexity:** Keep functions short (under 20 lines) and focused on a single responsibility. Limit parameters to a maximum of four; use a parameter object (a `dataclass`) for more complex inputs.
-- **Use **`operator`** for Simple Access:** Employ `attrgetter`, `itemgetter`, and `methodcaller` for direct, high-performance attribute/item access or method calls in higher-order functions.
-- **Use **`lambda`** for Complex Logic:** Reserve `lambda` for anonymous functions that require computations, conditional logic, or custom error handling not supported by the `operator` module.
-- **Compose with **`returns.pipeline.flow`**:** Construct processing pipelines by passing data through a sequence of functions. Use `returns.pointfree.bind` to chain operations that return containers (`Result`, `Maybe`).
-
-  ```python
-  from returns.pipeline import flow
-  from returns.pointfree import bind
-
-  result = flow(
-      initial_data,
-      validate_input,
-      bind(fetch_record),
-      bind(transform_record),
-  )
-
-  ```
-
-### Effect & Error Handling with`returns`
-
-Make all effects and potential failures explicit in function signatures using the `returns` library.
-
-- **For Fallible Operations, Use **`Result`**:** Return `Success(value)` or `Failure(error)` for any operation that can fail. Never raise exceptions for predictable errors.
-- **For Optionality, Use **`Maybe`**:** Return `Some(value)` or `Nothing` for values that may be absent. Never use `Optional[T]` or return raw `None`.
-- **For Synchronous Side Effects, Use **`IO`**:** Wrap any function that performs I/O (e.g., file access, network requests, database calls) in an `IO` or `IOResult` container. This marks the function as impure and defers its execution.
-- **For Asynchronous Side Effects, Use **`FutureResult`**:** Use `FutureResult` to compose asynchronous operations that may fail, ensuring that exceptions do not break the `asyncio` event loop.
-
-### Application Boundaries: CLI & API Design
-
-Structure applications with clear, type-safe interfaces.
-
-- **Design CLIs with **`Typer`**:**
-  - Build CLIs based on Python type hints.
-  - Use `Annotated` for defining options and arguments with help text.
-  - Place default values in the function signature, not within `typer.Option()`.
-  - Use `rich.console` for all terminal output; never use `print()`.
-  - Exit with `typer.Exit(code=n)` instead of `sys.exit()`.
-- **Design REST APIs:**
-  - Adhere to strict and consistent REST conventions.
-  - Version APIs explicitly in the URL path (e.g., `/api/v1/`).
-  - Use correct HTTP methods and status codes.
-  - Return consistent, structured error formats.
-  - Implement idempotency keys for unsafe methods.
-- **Isolate External Systems:** Use an Anti-Corruption Layer—a dedicated module for translating data between external APIs and your internal domain models—to protect your core logic from outside influence.
-
-### Data Processing & Persistence
-
-Handle data in a functional and safe manner.
-
-- **Use **`itertools`** and Generators:** Leverage `itertools` for efficient, memory-safe iteration. Create custom iterators using generator functions (`yield`) for lazy data processing.
-- **Use Immutable Collections:** Use `tuple` for fixed sequences, `frozenset` for immutable sets, and `types.MappingProxyType` for read-only dictionary views.
-- **Ensure Database Safety:**
-  - Use transactions for all write operations to maintain consistency.
-  - Manage database migrations with a tool like Alembic.
-  - Write idempotent migration scripts.
-  - Use connection pooling for performance and resource management.
-  - Validate and sanitize all inputs to prevent SQL injection.
-
-### Testing & Validation
-
-Verify correctness through rigorous, automated testing.
-
-- **Write Tests First:** Follow a Test-Driven Development (TDD) approach.
-- **Test Properties, Not Just Examples:** Use `hypothesis` for property-based testing. Define properties and invariants that your code must satisfy, and let the library generate hundreds of diverse examples to find edge cases.
-
-  ```python
-  from hypothesis import given, strategies as st
-
-  @given(st.lists(st.integers()))
-  def test_sort_is_idempotent(items: list[int]) -> None:
-      assert sorted(sorted(items)) == sorted(items)
-
-  ```
-
-- **Isolate and Test Pure Functions:** Pure functions can be tested in complete isolation with a given input and an expected output, requiring no mocks or complex setup.
-- **Mock Only at External Boundaries:** Restrict mocking to interfaces that communicate with external systems (e.g., APIs, databases). Do not mock internal application logic.
-
-### Documentation & Tooling
-
-Maintain a clear and efficient development environment.
-
-- **Write Self-Documenting Code:** Use precise, descriptive names for functions and variables.
-- **Document the "Why," Not the "What":** Use Google-style docstrings for public APIs to explain intent, preconditions, and postconditions.
-- **Enforce Static Type Checking:** Use a strict type checker like `basedpyright` in your development workflow.
-
-  ```bash
-  basedpyright --pythonversion 3.13
-  ```
-
-- **Never Suppress Type Errors:** Do not use `cast` or `# type: ignore`. Address all type errors directly. Do not use `Any`.
-
-## Development Philosophy
-
-Apply functional programming principles consistently throughout the codebase.
-Write pure, composable functions with explicit error handling and immutable data structures.
-
-## Package Management & Environment
-
-- **ALWAYS use `uv`** - Never use `pip`, `pipx`, `conda`, or other package managers
-- **ALWAYS use `uv run`** instead of `python` directly
-- Use `pyproject.toml` for all project configuration
-- Pin exact versions in `.python-version`
-
-## Type System Requirements
-
-### Mandatory Type Safety
-
-- **NEVER use `Any`** - Use proper generics, protocols, or union types
-- **NEVER use `cast()`** or `# type: ignore`
-- **NEVER use `Optional[T]`** - Use `Maybe[T]` from `returns` library
-- **ALWAYS use PEP 695 syntax** for generics: `class Box[T]:` not `class Box(Generic[T]):`
-- **ALWAYS use `type` aliases**: `type UserId = int`
-- **ALWAYS use explicit type narrowing functions** to refine types at runtime.
-  - Type narrowing functions must return `bool` and be annotated with a type predicate (e.g., `def is_str(x: object) -> TypeIs[str]: ...`).
-- **ALWAYS use `TypeIs` for type narrowing** when both positive and negative branches require precise type inference.
-  - The narrowed type in the `if` branch is the intersection of the argument’s type and the `TypeIs` return type.
-  - The narrowed type in the `else` branch is the intersection of the argument’s type and the complement of the `TypeIs` return type.
-- **ALWAYS use `TypeGuard` for user-defined type guards** when only the positive branch requires narrowing.
-  - Type narrowing applies only in the `if` branch; the `else` branch is not narrowed.
-- **Type narrowing functions MUST accept at least one positional argument.**
-  - Type narrowing is applied only to the first argument.
-- **The return type of a type narrowing function MUST be assignable to the input type.**
-  - It is a type error to narrow to a type that is not assignable to the input.
-- **Type narrowing functions MUST be pure and deterministic.**
-  - No side effects or mutation are allowed.
-- **NEVER use `Any` or `cast()` for type narrowing.**
-  - Always use type predicates and explicit type guards.
-- **ALWAYS use pattern matching or explicit type checks** to implement type narrowing logic.
-- **ALWAYS document the expected narrowed types** in both positive and negative branches using type assertions or comments.
-- **NEVER rely on implicit narrowing or runtime exceptions** for type safety.
-
-### Import Standards
+## 2. Type System (PEP 695)
 
 ```python
-# REQUIRED imports for collections
-from collections.abc import Sequence, Mapping, Callable, Iterable, Iterator
+type UserId = int
+type Result[T, E] = Success[T] | Failure[E]
 
-# REQUIRED for functional programming
-from returns.result import Result, Success, Failure
-from returns.maybe import Maybe, Some, Nothing
-from returns.io import IO, IOResult
+@dataclass(frozen=True, slots=True)
+class User: ...
+```
+
+## 3. Function Rules
+
+- ≤ 20 lines, ≤ 4 params
+- Keyword-only after `*`
+- Use `flow` to compose:
+
+```python
 from returns.pipeline import flow
 from returns.pointfree import bind
 
-# FORBIDDEN - Use collections.abc instead
-# from typing import Sequence, Mapping, List, Dict
-```
-
-### Function Parameters
-
-- **NEVER use `list[T]` in parameters** - Use `Sequence[T]`
-- **NEVER use `dict[K, V]` in parameters** - Use `Mapping[K, V]`
-- **ALWAYS use immutable parameter types**
-
-## Data Structures
-
-### Mandatory Patterns
-
-- **ALWAYS use `@dataclass(frozen=True, slots=True)`** for data classes
-- **ALWAYS use `tuple` instead of `list`** for fixed sequences
-- **ALWAYS use `frozenset` instead of `set`** for APIs
-- **NEVER mutate objects in place** - Return new instances
-
-### Error Handling
-
-- **ALWAYS use `Result[T, E]`** for operations that can fail
-- **NEVER raise exceptions** for expected errors
-- **ALWAYS use `Maybe[T]`** for nullable values
-- **ALWAYS use pattern matching** on Result and Maybe types
-
-## Function Design
-
-### Mandatory Requirements
-
-- **Functions MUST be pure** - Same input always produces same output
-- **Functions MUST NOT have side effects** - Use `IO[T]` for effects
-- **Maximum 20 lines per function**
-- **Maximum 4 parameters** - Use parameter objects if needed
-- **ALWAYS use keyword-only arguments** for functions with 3+ parameters
-
-### Composition
-
-```python
-# REQUIRED pattern for operation chaining
 result = flow(
-    input_data,
+    data,
     validate,
-    bind(transform),
+    bind(process),
     bind(save),
 )
 ```
 
-## Testing Framework
-
-- **Primary: pytest** with type-checked fixtures
-- **Property testing: hypothesis** for all pure functions
-- **ALWAYS test error paths** explicitly
-- **One assertion per test**
-- **Descriptive test names**: `test_divide_by_zero_returns_failure`
-
-## CLI Development
-
-### Typer Standards
+## 4. CLI (Typer)
 
 ```python
-# REQUIRED pattern - no defaults in Option()
-def command(
-    file: Annotated[Path, typer.Argument(help="Input file")],
-    output: Annotated[str, typer.Option("--output", "-o")] = "out.txt",
+def cmd(
+    file: Annotated[Path, typer.Argument()],
+    out: Annotated[str, typer.Option("-o")] = "out.txt",
 ) -> None:
+    ...
 ```
 
-- **ALWAYS use `rich` for output** - Never plain `print()`
-- **ALWAYS use `typer.Exit(code=n)`** instead of `sys.exit()`
-- **ALWAYS validate inputs early**
+- Defaults live in the signature, **not** in `typer.Option`.
+- Use `rich` for output, `typer.Exit(code)` to quit.
 
-## Code Organization
-
-### File Structure
-
-- **Pure functions**: No external dependencies in function bodies
-- **Boundary functions**: Handle I/O and external integrations
-- **Domain models**: Immutable dataclasses with business logic
-- **Services**: Protocol-based interfaces for external systems
-
-### Module Dependencies
-
-- **Domain modules MUST NOT import infrastructure**
-- **Use dependency injection** for external services
-- **ALWAYS define clear service boundaries**
-
-## Error Handling Patterns
-
-### Required Patterns
+## 5. Error Handling
 
 ```python
-# Configuration parsing
-def load_config(path: Path) -> Result[Config, ConfigError]:
-    return (
-        read_file(path)
-        .bind(parse_json)
-        .bind(validate_config)
-    )
-
-# Pattern matching on results
-match result:
-    case Success(value):
-        process(value)
-    case Failure(error):
-        handle_error(error)
-    case _:  # ALWAYS include exhaustive case
-        pass
-```
-
-## Performance & Quality
-
-### Type Checking
-
-- **ALWAYS use `basedpyright --pythonversion 3.13`**
-- **Zero type errors tolerance**
-- **Full type coverage required**
-
-### Code Quality
-
-- **ALWAYS use `ruff` for linting**
-- **ALWAYS use `ruff format` for formatting**
-- **No magic numbers** - Use named constants
-- **Meaningful variable names** - No abbreviations
-
-## Security Requirements
-
-- **NEVER commit secrets** to repository
-- **ALWAYS validate inputs** at boundaries
-- **Use environment variables** for configuration
-- **ALWAYS use parameterized queries** for databases
-
-## Forbidden Patterns
-
-### Type System
-
-```python
-# FORBIDDEN
-from typing import Optional, List, Dict, Any
-def func(data: Any) -> Optional[List[str]]:
-    return cast(List[str], data)
-
-# REQUIRED
-from collections.abc import Sequence
-from returns.maybe import Maybe
-def func[T](data: T) -> Maybe[Sequence[str]]:
-    # type-safe implementation
-```
-
-### State Management
-
-```python
-# FORBIDDEN - mutable state
-class Counter:
-    def __init__(self):
-        self.count = 0
-    def increment(self):
-        self.count += 1
-
-# REQUIRED - immutable state
-@dataclass(frozen=True)
-class Counter:
-    count: int = 0
-    def increment(self) -> Counter:
-        return Counter(self.count + 1)
-```
-
-### Error Handling
-
-```python
-# FORBIDDEN
-def parse_int(value: str) -> int:
-    return int(value)  # Can raise ValueError
-
-# REQUIRED
-def parse_int(value: str) -> Result[int, ValueError]:
+def parse_int(s: str) -> Result[int, ValueError]:
     try:
-        return Success(int(value))
+        return Success(int(s))
     except ValueError as e:
         return Failure(e)
+
+match parse_int("42"):
+    case Success(n): ...
+    case Failure(e): ...
 ```
 
-## Library Preferences
+## 6. Testing
 
-### Required Libraries
+- **pytest + hypothesis**
+- One assertion per test
+- Property tests for pure functions
 
-- **returns**: Functional programming primitives
-- **typer**: CLI development
-- **rich**: Terminal output
-- **pytest**: Testing framework
-- **hypothesis**: Property-based testing
+## 7. Tooling
 
-### Forbidden Libraries
+```bash
+uv run basedpyright --pythonversion 3.13
+uv run ruff check
+uv run ruff format
+```
 
-- **Click**: Use Typer instead
-- **argparse**: Use Typer instead
-- **requests**: Use httpx instead (async by default)
+## 8. Forbidden
 
-## Git & Version Control
+- `Any`, `cast`, `# type: ignore`, `Optional`, `print`, `sys.exit`, mutable globals, `list`/`dict` in signatures.
 
-- **Use conventional commits**: `feat:`, `fix:`, `refactor:`, etc.
-- **Never commit directly to main** - Use feature branches
-- **ALWAYS rebase** instead of merge commits
-- **Squash commits** before merging to main
+## 9. Project Skeleton
 
-## Documentation
-
-- **Google-style docstrings** for public APIs
-- **Type hints ARE documentation** - Use them comprehensively
-- **Document business logic rationale** - Not implementation details
-- **Keep README.md updated** with setup and usage
-
-## File Naming & Organization
-
-- **Snake_case for files**: `user_service.py`
-- **Clear module purposes**: One responsibility per module
-- **Group related functionality**: Keep cohesive functions together
-- **Separate concerns**: Domain, infrastructure, presentation layers
-
-## Development Workflow
-
-1. **Write types first** - Define interfaces before implementation
-2. **Write tests next** - TDD approach required
-3. **Implement with pure functions** - No side effects in business logic
-4. **Compose at boundaries** - Assemble pure functions into workflows
-5. **Type check continuously** - Fix type errors immediately
-
-This workspace emphasizes functional programming principles, type safety, and clear separation of concerns. Every code change should advance these goals while maintaining zero technical debt.
+```bash
+src/
+  robofactor/  # project source
+tests/
+  test_*.py    # property tests
+pyproject.toml # uv + ruff + basedpyright
+```
