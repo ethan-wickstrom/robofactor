@@ -1,38 +1,16 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
-from typing import TypeGuard
 
 import dspy
 from pydantic import ValidationError
 
 from robofactor.app.config import TRAINING_DATA_FILE
-from robofactor.json.types import JSON, JSONObject
 
 from .models import TrainingEntry, TrainingSetAdapter
 
 FAILURE_SCORE = 0.0
 logger = logging.getLogger(__name__)
-
-
-def is_training_item(x: JSON) -> TypeGuard[JSONObject]:
-    return (
-        isinstance(x, dict)
-        and "code_snippet" in x
-        and isinstance(x["code_snippet"], str)
-        and (
-            "test_cases" not in x
-            or (
-                isinstance(x["test_cases"], Sequence)
-                and all(isinstance(tc, dict) for tc in x["test_cases"])
-            )
-        )
-    )
-
-
-def is_json_object(x: JSON) -> TypeGuard[JSONObject]:
-    return isinstance(x, dict)
 
 
 def load_training_data() -> list[dspy.Example]:

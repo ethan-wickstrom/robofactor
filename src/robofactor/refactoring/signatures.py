@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import dspy
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..parsing.analysis import extract_python_code
+from robofactor.common.code_extraction import extract_python_code
 
 
 # --- Pydantic Models ---

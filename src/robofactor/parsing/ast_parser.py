@@ -6,6 +6,8 @@ from pathlib import Path
 from returns.io import impure_safe
 from returns.result import safe
 
+from robofactor.common.ast_utils import ast_node_to_source
+
 from .models import (
     ClassContext,
     Decorator,
@@ -84,24 +86,6 @@ class FunctionInfo:
             docstring=extract_docstring(node),
             return_annotation=(ast_node_to_source(node.returns) if node.returns else None),
         )
-
-
-def ast_node_to_source(node: ast.AST) -> str:
-    """
-    Convert an AST node back to its source code representation.
-
-    Args:
-        node: The AST node to convert.
-
-    Returns:
-        The source code string for the node, or a repr for fallback.
-    """
-    try:
-        return ast.unparse(node)
-    except Exception:
-        # Fallback for nodes that ast.unparse might not handle gracefully.
-        # This ensures that even complex or unusual AST structures can be represented.
-        return repr(node)
 
 
 def extract_decorators(decorators: Sequence[ast.expr]) -> tuple[Decorator, ...]:
