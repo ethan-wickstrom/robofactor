@@ -32,17 +32,17 @@ class CodeRefactor(dspy.Module):
             plan_steps=plan_result.plan.plan_steps,
         )
         eval_result = self.evaluator(
-            code_snippet=impl_result.implementation.refactored_code,
-            quality_scores=impl_result.implementation.quality_scores,
-            functional_score=impl_result.implementation.functional_score,
+            code_snippet=impl_result.refactored_code,
+            quality_scores="{}",  # TODO: Implement quality scoring
+            functional_score=0.0,  # TODO: Implement functional scoring
         )
         return dspy.Prediction(
             analysis=analysis_result.analysis.analysis,
             refactoring_opportunities=analysis_result.analysis.refactoring_opportunities,
             refactoring_summary=plan_result.plan.refactoring_summary,
             plan_steps=plan_result.plan.plan_steps,
-            refactored_code=impl_result.implementation.refactored_code,
-            implementation_explanation=impl_result.implementation.implementation_explanation,
+            refactored_code=impl_result.refactored_code,
+            implementation_explanation=impl_result.implementation_explanation,
             final_score=eval_result.final_score,
             final_suggestion=eval_result.final_suggestion,
         )
