@@ -1,5 +1,4 @@
 import logging
-from typing import Literal
 
 import dspy
 
@@ -11,40 +10,6 @@ from robofactor.signatures.refactoring_plan import RefactoringPlan
 FAILURE_SCORE = 0.0
 TRAINING_DATA_FILE = "training.json"
 logger = logging.getLogger(__name__)
-
-
-class RefactoredCode(dspy.Signature):
-    """
-    Apply the refactoring plan to produce improved code.
-    Output PEP8-compliant Python with type hints, docstrings, and a rationale for the changes.
-    """
-    original_code: dspy.Code[Literal["python"]] = dspy.InputField(desc="Unmodified source code")
-    refactoring_summary: str = dspy.InputField(desc="Refactoring objective")
-    plan_steps: list[str] = dspy.InputField(desc="Step-by-step refactoring actions")
-    refactored_code: dspy.Code[Literal["python"]] = dspy.OutputField(
-        description="PEP8-compliant Python code with type hints and docstrings"
-    )
-    implementation_explanation: str = dspy.OutputField(
-        description="Rationale for implemented changes"
-    )
-
-
-class FinalEvaluation(dspy.Signature):
-    """
-    Assess the refactored code using quantitative metrics and test results.
-    Provide a weighted quality score and actionable final suggestions.
-    """
-    code_snippet: dspy.Code[Literal["python"]] = dspy.InputField(desc="Refactored Python code")
-    quality_scores: str = dspy.InputField(desc="JSON quality metrics")
-    functional_score: float = dspy.InputField(desc="Test pass rate (0.0-1.0)")
-    final_score: float = dspy.OutputField(
-        description="Weighted quality score (0.0-1.0)",
-        ge=0.0,
-        le=1.0
-    )
-    final_suggestion: str = dspy.OutputField(
-        description="Improvement recommendations or approval"
-    )
 
 
 class CodeRefactor(dspy.Module):
