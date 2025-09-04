@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class CodeRefactor(dspy.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.analyzer = dspy.Predict(CodeAnalysis)
         self.planner = dspy.Predict(RefactoringPlan)
