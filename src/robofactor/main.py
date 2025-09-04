@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Optional, Union
 
@@ -67,12 +69,12 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
     return _calculate_reward_score(example, prediction)
 
 def _metric_fn(
-        gold: dspy.Example,
-        pred: dspy.Prediction,
-        trace: Optional["DSPyTrace"],
-        pred_name: str | None,
-        pred_trace: Optional["DSPyTrace"],
-    ) -> Union[float, "ScoreWithFeedback"]:
+    gold: dspy.Example,
+    pred: dspy.Prediction,
+    trace: Optional["DSPyTrace"],
+    pred_name: str | None,
+    pred_trace: Optional["DSPyTrace"],
+) -> float | "ScoreWithFeedback":
     """Wrapper to adapt metric function signature."""
     if not gold.test_cases:
         return 0.0
