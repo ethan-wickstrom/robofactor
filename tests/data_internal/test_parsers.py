@@ -1,11 +1,9 @@
-import pytest
-
 from returns.result import Failure, Success
 
 from robofactor.data._internal.parsers import BasicParser, DictParser, ListParser
 
 
-def test_basic_parser_success_and_failure():
+def test_basic_parser_success_and_failure() -> None:
     is_int = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
     ok = is_int.parse(3)
     err = is_int.parse("nope")
@@ -17,7 +15,7 @@ def test_basic_parser_success_and_failure():
     assert "Expected int" in err.failure()
 
 
-def test_list_parser_success_and_element_error():
+def test_list_parser_success_and_element_error() -> None:
     is_int = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
     list_parser = ListParser(is_int)
 
@@ -36,7 +34,7 @@ def test_list_parser_success_and_element_error():
     assert "Expected list" in not_list.failure()
 
 
-def test_dict_parser_success_and_missing_field():
+def test_dict_parser_success_and_missing_field() -> None:
     a_parser = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
     b_parser = BasicParser[str](type_check=lambda x: isinstance(x, str), type_name="string")
 

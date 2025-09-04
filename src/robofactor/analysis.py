@@ -6,12 +6,12 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import dspy
 
 from . import config
 from .data import models
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # Avoid circular import at runtime
     from .evaluation import CodeQualityScores

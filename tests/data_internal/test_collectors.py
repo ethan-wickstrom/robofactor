@@ -8,7 +8,7 @@ from robofactor.data._internal.collectors import (
 from robofactor.data._internal.parsers import BasicParser
 
 
-def test_collect_success_and_failure():
+def test_collect_success_and_failure() -> None:
     int_parser = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
 
     ok = collect([1, 2, 3], int_parser)
@@ -20,14 +20,14 @@ def test_collect_success_and_failure():
     assert "element 1" in bad.failure()
 
 
-def test_collect_with_context_enhances_error_message():
+def test_collect_with_context_enhances_error_message() -> None:
     int_parser = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
     res = collect_with_context([1, "x"], int_parser, error_context="example")
     assert isinstance(res, Failure)
     assert "example 1" in res.failure()
 
 
-def test_collect_partial_returns_both_success_and_errors():
+def test_collect_partial_returns_both_success_and_errors() -> None:
     int_parser = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
     successes, errors = collect_partial([1, "x", 3, "y"], int_parser)
 
