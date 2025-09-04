@@ -4,6 +4,8 @@ from typing import Literal
 import dspy
 
 from robofactor.signatures.code_analysis import CodeAnalysis
+from robofactor.signatures.final_evaluation import FinalEvaluation
+from robofactor.signatures.refactored_code import RefactoredCode
 from robofactor.signatures.refactoring_plan import RefactoringPlan
 
 FAILURE_SCORE = 0.0
