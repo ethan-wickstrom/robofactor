@@ -63,6 +63,11 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
     example = next((ex for ex in train_set if ex.code_snippet == code_snippet), None)
 
     if example is None:
+        import logging
+        import os
+        logging.warning(f"No matching example found for code_snippet: {code_snippet!r}")
+        if os.environ.get("ROBOFACTOR_DEV_MODE", "0") == "1":
+            raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
         return 0.0
 
     return _calculate_reward_score(example, prediction)
