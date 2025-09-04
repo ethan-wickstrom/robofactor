@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import dspy
 import mlflow
 import typer
+from returns.result import Result
 
 if TYPE_CHECKING:
     from dspy.teleprompt.gepa.gepa import DSPyTrace, ScoreWithFeedback
@@ -73,11 +74,7 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
     return _calculate_reward_score(example, prediction)
 
 def _metric_fn(
-    gold: dspy.Example,
-    pred: dspy.Prediction,
-    trace: DSPyTrace | None,
-    pred_name: str | None,
-    pred_trace: DSPyTrace | None,
+    gold: dspy.Example, pred: dspy.Prediction, trace: DSPyTrace | None = None
 ) -> float | ScoreWithFeedback:
     """Wrapper to adapt metric function signature."""
     if not gold.test_cases:
@@ -145,13 +142,7 @@ def _load_or_compile_model(
     return self_correcting_refactorer
 
 
-def _run_refactoring_on_file(
-    console: Console, refactorer: dspy.Module, script_path: Path, write: bool
-) -> None:
-    """Reads a file, runs the refactoring process, and displays results."""
-    console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
-    source_code = script_path.read_text(encoding="utf-8")
-
+def _render_original(console: Console, script_path: Path, source_code: str) -> None:
     console.print(
         Panel(
             Syntax(source_code, "python", theme=config.RICH_SYNTAX_THEME, line_numbers=True),
@@ -160,18 +151,29 @@ def _run_refactoring_on_file(
         )
     )
 
-    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
-        "code_snippet"
-    )
-    prediction = refactorer(**refactor_example.inputs())
-    ui.display_refactoring_process(console, prediction)
 
-    refactored_code = extract_python_code(prediction.refactored_code)
-    raw_tests = refactor_example.get("test_cases", [])
-    tests = [models.TestCase(**tc) for tc in raw_tests] if raw_tests else []
+def _build_tests(raw_tests: list[dict] | None) -> list[models.TestCase]:
+    return [models.TestCase(**tc) for tc in raw_tests] if raw_tests else []
 
+
+def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[str, str]:
+    """Extract code from prediction and validate it's non-empty.
+
+    Returns Success(code) or Failure(message).
+    """
+    raw = getattr(prediction, "refactored_code", None)
+    if not raw or not isinstance(raw, str):
+        return Failure("No refactored code produced by the model.")
+    code = extract_python_code(raw)
+    if not code or not code.strip():
+        return Failure("Extracted refactored code is empty.")
+    return Success(code)
+
+
+def _evaluate_and_maybe_write(
+    console: Console, refactored_code: str, tests: list[models.TestCase], script_path: Path, write: bool
+) -> None:
     evaluation = evaluate_refactored_code(refactored_code, tests)
-
     match evaluation:
         case Success(eval_data):
             ui.display_evaluation_results(console, eval_data)
@@ -191,6 +193,41 @@ def _run_refactoring_on_file(
             if write:
                 console.print(
                     "[bold yellow]Skipping write-back due to evaluation failure.[/bold yellow]"
+                )
+
+
+def _run_refactoring_on_file(
+    console: Console, refactorer: dspy.Module, script_path: Path, write: bool
+) -> None:
+    """Reads a file, runs the refactoring process, and displays results."""
+    console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
+    source_code = script_path.read_text(encoding="utf-8")
+    _render_original(console, script_path, source_code)
+
+    # Build model example and run prediction
+    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
+        "code_snippet"
+    )
+    prediction = refactorer(**refactor_example.inputs())
+    ui.display_refactoring_process(console, prediction)
+
+    # Safely extract non-empty Python code
+    extracted = _safe_extract_refactored_code(prediction)
+    match extracted:
+        case Success(refactored_code):
+            raw_tests = refactor_example.get("test_cases", [])
+            tests = _build_tests(raw_tests)
+            _evaluate_and_maybe_write(console, refactored_code, tests, script_path, write)
+        case Failure(msg):
+            console.print(
+                Panel(
+                    f"[bold yellow]No usable refactored code:[/bold yellow]\n{msg}",
+                    border_style="yellow",
+                )
+            )
+            if write:
+                console.print(
+                    "[bold yellow]Skipping write-back due to missing refactored code.[/bold yellow]"
                 )
 
 
@@ -248,7 +285,12 @@ def main(
         target_path = Path(__file__)
         console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
     elif path:
-        target_path = path
+        path_obj = Path(path)
+        if path_obj.is_file() and path_obj.suffix == ".py":
+            target_path = path_obj
+        else:
+            console.print(f"[red]Provided path '{path}' is not a Python (.py) file.[/red]")
+            return
 
     if target_path:
         _run_refactoring_on_file(console, refactorer, target_path, write)

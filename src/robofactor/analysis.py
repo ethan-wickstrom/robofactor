@@ -93,6 +93,8 @@ def check_code_quality(code: str, func_name: str | None = None) -> 'CodeQualityS
 
 
 def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> 'CodeQualityScores':
+    # Local import to avoid circular import at runtime
+    from .evaluation import CodeQualityScores
     # Exceptions from subprocess.run will be caught by the @safe wrapper in the caller.
     result = subprocess.run(
         [
