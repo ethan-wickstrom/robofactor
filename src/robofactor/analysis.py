@@ -6,7 +6,6 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import dspy
 

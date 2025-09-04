@@ -1,4 +1,6 @@
-try:
+import contextlib
+
+with contextlib.suppress(Exception):
     import os
 
     from beartype import BeartypeConf
@@ -8,8 +10,6 @@ try:
 
     if os.environ.get("ROBOFACTOR_BEARTYPE_ALL", "1") == "1":
         beartype_all(conf=BeartypeConf(violation_type=UserWarning))
-except Exception:
-    pass
 
 from .data import examples, models
 
