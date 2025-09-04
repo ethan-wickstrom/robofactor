@@ -62,7 +62,7 @@ def _get_ast_based_scores(tree: ast.AST, func_name: str | None) -> tuple[float, 
     typed_elements, typeable_elements = 0, 0
     for func_node in target_funcs:
         args = func_node.args
-        typed_elements += sum(1 for arg in args.args if arg.annotation is not None)
+        typed_elements += sum(arg.annotation is not None for arg in args.args)
         typed_elements += 1 if func_node.returns is not None else 0
         typeable_elements += len(args.args) + 1
 
