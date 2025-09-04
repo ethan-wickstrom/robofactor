@@ -5,11 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CodeQualityScores:
-    """Holds various code quality metrics.
-
-    Separated into a shared types module to avoid import cycles between
-    analysis and evaluation when using runtime type checking (beartype).
-    """
+    """Holds various code quality metrics."""
 
     linting_score: float
     complexity_score: float
