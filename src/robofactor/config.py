@@ -1,10 +1,3 @@
-"""
-Centralized configuration for the refactoring tool.
-
-This module consolidates all constants, magic numbers, and default settings
-to simplify management and modification.
-"""
-
 from pathlib import Path
 
 # --- File Paths ---

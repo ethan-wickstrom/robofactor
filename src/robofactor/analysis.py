@@ -1,12 +1,3 @@
-"""
-Utility functions for static and dynamic code analysis.
-
-This module includes functions for syntax validation, quality scoring (linting,
-complexity, typing, docstrings), and functional correctness checking. These
-functions are designed to be pure or to have their side effects managed by
-callers, often using decorators like `@safe` from the `returns` library.
-"""
-
 import ast
 import json
 import os
@@ -19,7 +10,8 @@ from pathlib import Path
 import dspy
 
 from . import config
-from .evaluation import CodeQualityScores, TestCase
+from .data import models
+from .evaluation import CodeQualityScores
 
 
 def extract_python_code(text: str) -> str:
@@ -121,7 +113,7 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
             os.unlink(tmp_path)
 
 
-def _build_execution_script(func_name: str, test_case: TestCase) -> str:
+def _build_execution_script(func_name: str, test_case: models.TestCase) -> str:
     """Constructs a Python script to execute a function with a given test case."""
     args_json = json.dumps(test_case.args)
     kwargs_json = json.dumps(test_case.kwargs)
@@ -143,7 +135,7 @@ def _build_execution_script(func_name: str, test_case: TestCase) -> str:
     )
 
 
-def check_functional_correctness(code: str, func_name: str, test_cases: list[TestCase]) -> int:
+def check_functional_correctness(code: str, func_name: str, test_cases: list[models.TestCase]) -> int:
     """
     Executes test cases against code in a sandboxed Python interpreter.
 
