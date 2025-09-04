@@ -89,7 +89,7 @@ def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -
         console.print(f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]")
         mlflow.set_tracking_uri(mlflow_uri)
         mlflow.set_experiment(mlflow_experiment)
-        mlflow.dspy.autolog(log_compiles=True, log_traces=True)  # type: ignore
+        mlflow.dspy.autolog(log_compiles=True, log_traces=True) # pyright: ignore[reportPrivateImportUsage] mlflow.dspy is lazy-loaded
     return console
 
 
@@ -139,7 +139,7 @@ def _load_or_compile_model(
 
 def _run_refactoring_on_file(
     console: Console, refactorer: dspy.Module, script_path: Path, write: bool
-):
+) -> None:
     """Reads a file, runs the refactoring process, and displays results."""
     console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
     source_code = script_path.read_text(encoding="utf-8")
@@ -223,7 +223,7 @@ def main(
     mlflow_experiment: str = typer.Option(
         config.DEFAULT_MLFLOW_EXPERIMENT_NAME, "--mlflow-experiment", help="MLflow experiment name."
     ),
-):
+) -> None:
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""
     console = _setup_environment(tracing, mlflow_uri, mlflow_experiment)
 
