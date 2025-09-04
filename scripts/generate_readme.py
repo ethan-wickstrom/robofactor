@@ -18,7 +18,6 @@ try:
     sys.path.insert(0, str(project_root / "src"))
     from robofactor.function_extraction import FunctionInfo, parse_python_source
     from robofactor.main import app as cli_app
-    from robofactor.utils import suppress_pydantic_warnings
 except ImportError as e:
     print(
         f"Error: Failed to import project modules. Make sure you run from the project root"
@@ -362,7 +361,6 @@ def generate(
     """
     Analyzes the project and generates a comprehensive README.md.
     """
-    suppress_pydantic_warnings()
     console = Console()
     console.print("\n[bold cyan]═══ Robofactor README Generator ═══[/bold cyan]\n")
 
