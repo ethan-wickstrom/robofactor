@@ -25,7 +25,7 @@ def extract_python_code(text: str) -> str:
     """
     pattern = re.compile(r"^[ \t]*```python\s*\n(.*?)\n[ \t]*```", re.DOTALL | re.MULTILINE)
     match = pattern.search(text)
-    return match.group(1).strip() if match else text
+    return match[1].strip() if match else text
 
 
 def check_syntax(code: str) -> tuple[bool, str | None, str | None]:
@@ -37,10 +37,12 @@ def check_syntax(code: str) -> tuple[bool, str | None, str | None]:
     """
     try:
         tree = ast.parse(code)
-        func_node = next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None)
-        if not func_node:
+        if func_node := next(
+            (n for n in tree.body if isinstance(n, ast.FunctionDef)), None
+        ):
+            return True, func_node.name, None
+        else:
             return False, None, "No top-level function definition found."
-        return True, func_node.name, None
     except SyntaxError as e:
         return False, None, f"Syntax Error: {e}"
 
