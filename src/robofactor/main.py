@@ -89,7 +89,7 @@ def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -
         console.print(f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]")
         mlflow.set_tracking_uri(mlflow_uri)
         mlflow.set_experiment(mlflow_experiment)
-        mlflow.dspy.autolog(log_compiles=True, log_traces=True) # pyright: ignore[reportPrivateImportUsage] mlflow.dspy is lazy-loaded
+        mlflow.dspy.autolog(log_compiles=True, log_traces=True)  # pyright: ignore[reportPrivateImportUsage] mlflow.dspy is lazy-loaded
     return console
 
 
