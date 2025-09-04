@@ -9,7 +9,8 @@ import typer
 from returns.result import Result
 
 if TYPE_CHECKING:
-    from dspy.teleprompt.gepa.gepa import DSPyTrace, ScoreWithFeedback
+    # Imported for type checking only; these names are referenced in annotations.
+    from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
 from returns.result import Failure, Success
 from rich.console import Console
 from rich.panel import Panel
@@ -73,19 +74,25 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
 
     return _calculate_reward_score(example, prediction)
 
-def _metric_fn(
-    gold: dspy.Example, pred: dspy.Prediction, trace: DSPyTrace | None = None
-) -> float | ScoreWithFeedback:
-    """Wrapper to adapt metric function signature."""
-    if not gold.test_cases:
-        return 0.0
-    refactored_code = getattr(pred, "refactored_code", "")
-    if not refactored_code:
-        return 0.0
-    eval_result = evaluate_refactored_code(refactored_code, gold.test_cases)
-    if isinstance(eval_result, Failure):
-        return 0.0
-    return _get_functional_score(eval_result.unwrap())
+class _GEPARefactorMetric:
+    """Metric callable compatible with DSPy's GEPAFeedbackMetric protocol.
+
+    Accepts the full GEPA metric signature with optional predictor-level
+    context and returns either a float score or a `ScoreWithFeedback`.
+    Currently, we compute a functional score based on test execution and
+    return a float. GEPA will wrap this into structured feedback when needed.
+    """
+
+    def __call__(
+        self,
+        gold: dspy.Example,
+        pred: dspy.Prediction,
+        trace: DSPyTrace | None = None,
+        pred_name: str | None = None,
+        pred_trace: DSPyTrace | None = None,
+    ) -> float | ScoreWithFeedback:
+        # Leverage the same scoring logic used by `_reward_fn`.
+        return _calculate_reward_score(gold, pred)
 
 def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
     """Configures warnings, MLflow, and returns a rich Console."""
@@ -115,7 +122,7 @@ def _load_or_compile_model(
             "[yellow]No optimized model found or --optimize set. Running optimization...[/yellow]"
         )
         teleprompter = dspy.GEPA(
-            metric=_metric_fn,
+            metric=_GEPARefactorMetric(),
             auto="light",
             reflection_lm=reflection_lm,
             num_threads=8,
