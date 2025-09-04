@@ -78,52 +78,55 @@ def check_code_quality(code: str, func_name: str | None = None) -> 'CodeQualityS
     subprocess. It is designed to be wrapped by a decorator like `@safe`
     or `@impure_safe` to handle potential exceptions.
     """
-    # Local import to avoid circular import at module import time
-    from .evaluation import CodeQualityScores
-
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
         tmp.write(code)
         tmp_path = Path(tmp.name)
 
     try:
-        # Exceptions from subprocess.run will be caught by the @safe wrapper in the caller.
-        result = subprocess.run(
-            [
-                "flake8",
-                f"--max-complexity={config.FLAKE8_MAX_COMPLEXITY}",
-                str(tmp_path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,  # We manually check output, not exit code.
-        )
-        all_issues = result.stdout.strip().splitlines() if result.stdout else []
-
-        complexity_warnings = [
-            issue for issue in all_issues if config.FLAKE8_COMPLEXITY_CODE in issue
-        ]
-        linting_issues = [
-            issue for issue in all_issues if config.FLAKE8_COMPLEXITY_CODE not in issue
-        ]
-
-        complexity_score = 1.0 if not complexity_warnings else 0.0
-        linting_score = max(0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues)))
-
-        # A SyntaxError here will be caught by the @safe wrapper in the caller.
-        tree = ast.parse(code)
-        docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
-
-        return CodeQualityScores(
-            linting_score=linting_score,
-            complexity_score=complexity_score,
-            typing_score=typing_score,
-            docstring_score=docstring_score,
-            linting_issues=linting_issues,
+        return _compute_quality_scores(
+            tmp_path, code, func_name
         )
     finally:
         # Ensure the temporary file is always cleaned up.
         if tmp_path.exists():
             os.unlink(tmp_path)
+
+
+def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> 'CodeQualityScores':
+    # Exceptions from subprocess.run will be caught by the @safe wrapper in the caller.
+    result = subprocess.run(
+        [
+            "flake8",
+            f"--max-complexity={config.FLAKE8_MAX_COMPLEXITY}",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,  # We manually check output, not exit code.
+    )
+    all_issues = result.stdout.strip().splitlines() if result.stdout else []
+
+    complexity_warnings = [
+        issue for issue in all_issues if config.FLAKE8_COMPLEXITY_CODE in issue
+    ]
+    linting_issues = [
+        issue for issue in all_issues if config.FLAKE8_COMPLEXITY_CODE not in issue
+    ]
+
+    complexity_score = 0.0 if complexity_warnings else 1.0
+    linting_score = max(0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues)))
+
+    # A SyntaxError here will be caught by the @safe wrapper in the caller.
+    tree = ast.parse(code)
+    docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
+
+    return CodeQualityScores(
+        linting_score=linting_score,
+        complexity_score=complexity_score,
+        typing_score=typing_score,
+        docstring_score=docstring_score,
+        linting_issues=linting_issues,
+    )
 
 
 def _build_execution_script(func_name: str, test_case: models.TestCase) -> str:
