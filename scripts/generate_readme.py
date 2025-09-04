@@ -5,7 +5,7 @@ import json
 import sys
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import dspy
 import toml
@@ -264,7 +264,7 @@ class AssembleReadme(dspy.Signature):
 class ReadmeGenerator(dspy.Module):
     """A DSPy module that orchestrates the entire README generation process."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initializes the sub-modules for each step of the generation pipeline."""
         super().__init__()
         self.outline_generator = dspy.ChainOfThought(GenerateReadmeOutline)
@@ -337,31 +337,38 @@ def configure_dspy(model_name: str, console: Console) -> None:
         dspy.configure(lm=llm)
     except Exception as e:
         console.print(f"[bold red]Error: Failed to configure DSPy with model '{model_name}': {e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command()
 def generate(
-    output: Path = typer.Option(
-        project_root / "README.md",
-        "--output",
-        "-o",
-        help="Path to write the generated README.md file.",
-        show_default=True,
-        writable=True,
-    ),
-    model: str = typer.Option(
-        "gemini/gemini-2.5-pro",
-        "--model",
-        "-m",
-        help="Language model to use for generation.",
-        show_default=True,
-    ),
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Path to write the generated README.md file.",
+            show_default=False,
+            writable=True,
+        ),
+    ] = None,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Language model to use for generation.",
+            show_default=True,
+        ),
+    ] = "gemini/gemini-2.5-pro",
 ) -> None:
     """
     Analyzes the project and generates a comprehensive README.md.
     """
     console = Console()
+    if output is None:
+        output = project_root / "README.md"
+
     console.print("\n[bold cyan]═══ Robofactor README Generator ═══[/bold cyan]\n")
 
     try:
@@ -371,21 +378,31 @@ def generate(
         project_context = analyzer.analyze()
 
         console.print("[bold blue]Starting README generation pipeline...[/bold blue]")
-        readme_generator = ReadmeGenerator()
-        with console.status("[bold green]Synthesizing README with DSPy...[/]", spinner="dots"):
-            prediction = readme_generator(project_context=project_context)
+        readme_content = generate_readme_content(project_context, console)
         console.print("[green]✓ Generation pipeline complete.[/green]")
 
         console.print(f"[dim]Writing output to [bold]{output}[/bold]...[/dim]")
-        output.write_text(prediction.readme_content, encoding="utf-8")
+        output.write_text(readme_content, encoding="utf-8")
 
     except Exception as e:
         console.print(f"\n[bold red]❌ An unexpected error occurred:[/bold red]\n{e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     console.print(
         f"\n[bold green]✅ README successfully generated at: {output}[/bold green]"
     )
+
+
+def generate_readme_content(project_context: ProjectContext, console: Console) -> str:
+    """Generates the content for the README.md file."""
+    readme_generator = ReadmeGenerator()
+    with console.status("[bold green]Synthesizing README with DSPy...[/]", spinner="dots"):
+        prediction = readme_generator(project_context=project_context)
+
+    if not isinstance(prediction.readme_content, str):
+        raise TypeError(f"Expected a string for readme_content, but got {type(prediction.readme_content)}")
+
+    return prediction.readme_content
 
 
 if __name__ == "__main__":
