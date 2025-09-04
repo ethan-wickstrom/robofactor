@@ -1,32 +1,12 @@
-"""
-Data models and core logic for evaluating refactored code.
-
-This module defines the structures for test cases, quality scores, and
-evaluation results, and contains the pure function for performing the evaluation.
-It leverages the 'returns' library for robust, type-safe error handling using
-a railway-oriented programming approach.
-"""
-
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import NamedTuple
 
 from returns.result import Failure, Result, Success, safe
 
 from robofactor import analysis
 from robofactor.data import models
-
-
-@dataclass(frozen=True)
-class CodeQualityScores:
-    """Holds various code quality metrics."""
-
-    linting_score: float
-    complexity_score: float
-    typing_score: float
-    docstring_score: float
-    linting_issues: list[str]
+from robofactor.types import CodeQualityScores
 
 
 class FunctionalCheckResult(NamedTuple):

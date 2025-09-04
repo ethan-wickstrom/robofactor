@@ -12,9 +12,7 @@ import dspy
 
 from . import config
 from .data import models
-
-if TYPE_CHECKING:  # Avoid circular import at runtime
-    from .evaluation import CodeQualityScores
+from .types import CodeQualityScores
 
 
 def extract_python_code(text: str) -> str:
@@ -70,7 +68,7 @@ def _get_ast_based_scores(tree: ast.AST, func_name: str | None) -> tuple[float, 
     return docstring_score, typing_score
 
 
-def check_code_quality(code: str, func_name: str | None = None) -> 'CodeQualityScores':
+def check_code_quality(code: str, func_name: str | None = None) -> CodeQualityScores:
     """
     Analyzes Python code for quality metrics using flake8 and AST.
 
@@ -92,9 +90,7 @@ def check_code_quality(code: str, func_name: str | None = None) -> 'CodeQualityS
             os.unlink(tmp_path)
 
 
-def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> 'CodeQualityScores':
-    # Local import to avoid circular import at runtime
-    from .evaluation import CodeQualityScores
+def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> CodeQualityScores:
     # Exceptions from subprocess.run will be caught by the @safe wrapper in the caller.
     result = subprocess.run(
         [
