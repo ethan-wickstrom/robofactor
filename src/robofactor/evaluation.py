@@ -9,23 +9,24 @@ a railway-oriented programming approach.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import NamedTuple
 
-from pydantic import BaseModel, Field
 from returns.result import Failure, Result, Success, safe
 
 from robofactor import analysis
 from robofactor.data import models
 
 
-class CodeQualityScores(BaseModel):
+@dataclass(frozen=True)
+class CodeQualityScores:
     """Holds various code quality metrics."""
 
     linting_score: float
     complexity_score: float
     typing_score: float
     docstring_score: float
-    linting_issues: list[str] = Field(default_factory=list)
+    linting_issues: list[str]
 
 
 class FunctionalCheckResult(NamedTuple):
