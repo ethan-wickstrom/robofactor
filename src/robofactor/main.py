@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Optional, Union, TYPE_CHECKING
 
 import dspy
 import mlflow
 import typer
-from dspy.teleprompt.gepa.gepa import DSPyTrace, ScoreWithFeedback
+if TYPE_CHECKING:  # Avoid import error for optional types
+    from dspy.teleprompt.gepa.gepa import DSPyTrace, ScoreWithFeedback
 from returns.result import Failure, Success
 from rich.console import Console
 from rich.panel import Panel
