@@ -47,16 +47,4 @@ def collect_partial[T](raw_items: list[Any], item_parser: Parser[T]) -> tuple[li
     return successes, errors
 
 
-# Legacy function for backward compatibility
-def collect_examples(items: list[dict[str, Any]]) -> Result[list[Any], str]:
-    """Legacy function - use collect() with appropriate parser instead."""
-    # This is intentionally generic since we don't have access to
-    # domain-specific parsers in this module
-    from robofactor.data._internal.parsers import BasicParser
-
-    dict_parser = BasicParser(type_check=lambda x: isinstance(x, dict), type_name="dictionary")
-
-    return collect(items, dict_parser)
-
-
-__all__ = ["collect", "collect_examples", "collect_partial", "collect_with_context"]
+__all__ = ["collect", "collect_partial", "collect_with_context"]
