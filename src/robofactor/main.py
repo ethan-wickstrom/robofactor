@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Optional
+from typing import TYPE_CHECKING, Annotated, Any
 
 import dspy
 import mlflow
@@ -71,10 +71,10 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
 def _metric_fn(
     gold: dspy.Example,
     pred: dspy.Prediction,
-    trace: Optional["DSPyTrace"],
+    trace: DSPyTrace | None,
     pred_name: str | None,
-    pred_trace: Optional["DSPyTrace"],
-) -> float | "ScoreWithFeedback":
+    pred_trace: DSPyTrace | None,
+) -> float | ScoreWithFeedback:
     """Wrapper to adapt metric function signature."""
     if not gold.test_cases:
         return 0.0
