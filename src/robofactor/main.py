@@ -26,8 +26,7 @@ app = typer.Typer()
 def _get_functional_score(eval_data: EvaluationResult) -> float:
     total_tests = eval_data.functional_check.total_tests
     passed_tests = eval_data.functional_check.passed_tests
-    functional_score = (passed_tests / total_tests) if total_tests > 0 else 1.0
-    return functional_score
+    return (passed_tests / total_tests) if total_tests > 0 else 1.0
 
 
 def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) -> float:
