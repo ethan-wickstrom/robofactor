@@ -7,7 +7,6 @@ from pathlib import Path
 from returns.io import impure_safe
 from returns.result import safe
 
-# Type alias for function definition AST nodes to improve readability.
 FunctionDefNode = ast.FunctionDef | ast.AsyncFunctionDef
 
 

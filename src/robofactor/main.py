@@ -49,8 +49,10 @@ def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) 
 
 def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
     """Wrapper to adapt reward function signature."""
-    # TODO: Handle failure case for get_examples()
-    train_set = examples.get_examples().unwrap()
+    trainset_result = examples.get_examples()
+    if isinstance(trainset_result, Failure):
+        return 0.0
+    train_set = trainset_result.unwrap()
     code_snippet = inputs["code_snippet"]
 
     # Find the example in the training set that matches the code snippet
@@ -113,14 +115,20 @@ def _load_or_compile_model(
             reflection_lm=reflection_lm,
             num_threads=8,
         )
-        teleprompter.compile(
-            # TODO: Handle failure case
-            # Do NOT use `unwrap` here; we need to handle the failure case
-            # properly in the caller
-            refactorer, trainset=examples.get_examples().unwrap()
-        )
-        console.print(f"Optimization complete. Saving to {optimizer_path}...")
-        self_correcting_refactorer.save(str(optimizer_path), save_program=True)
+        trainset_result = examples.get_examples()
+        match trainset_result:
+            case Success(trainset):
+                teleprompter.compile(refactorer, trainset=trainset)
+                console.print(f"Optimization complete. Saving to {optimizer_path}...")
+                self_correcting_refactorer.save(str(optimizer_path), save_program=True)
+            case Failure(err):
+                console.print(
+                    Panel(
+                        f"[bold red]Failed to load training examples:[/bold red]\n{err}",
+                        border_style="red",
+                    )
+                )
+                console.print("[yellow]Proceeding without optimization.[/yellow]")
     else:
         console.print(f"Loading optimized model from {optimizer_path}...")
         self_correcting_refactorer = dspy.load(str(optimizer_path))
