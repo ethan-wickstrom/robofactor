@@ -15,8 +15,13 @@ from .evaluation import CodeQualityScores
 
 
 def extract_python_code(text: str) -> str:
-    """Extracts Python code from a markdown block, returns original text if no block is found."""
-    match = re.search(r"```python\n(.*?)\n```", text, re.DOTALL)
+    """Extract Python code from a fenced markdown block.
+
+    - Supports optional leading indentation before fences.
+    - Returns original text if no Python fence is found.
+    """
+    pattern = re.compile(r"^[ \t]*```python\s*\n(.*?)\n[ \t]*```", re.DOTALL | re.MULTILINE)
+    match = pattern.search(text)
     return match.group(1).strip() if match else text
 
 
