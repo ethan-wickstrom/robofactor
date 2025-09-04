@@ -7,7 +7,7 @@ import dspy
 import mlflow
 import typer
 
-if TYPE_CHECKING:  # Avoid import error for optional types
+if TYPE_CHECKING:
     from dspy.teleprompt.gepa.gepa import DSPyTrace, ScoreWithFeedback
 from returns.result import Failure, Success
 from rich.console import Console
