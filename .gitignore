@@ -21,6 +21,7 @@ scripts/__pycache__/
 htmlcov/
 .coverage
 .coverage.*
+coverage.xml
 
 # ML / DSPy artifacts
 mlartifacts/
