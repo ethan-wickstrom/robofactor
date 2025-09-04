@@ -14,8 +14,8 @@ from rich.syntax import Syntax
 from . import config, ui
 from .analysis import extract_python_code
 from .data import examples, models
-from .dspy_modules import CodeRefactor
 from .evaluation import EvaluationResult, evaluate_refactored_code
+from .modules.code_refactor import CodeRefactor
 
 app = typer.Typer()
 
