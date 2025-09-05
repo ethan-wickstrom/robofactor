@@ -1,7 +1,6 @@
 import ast
 import json
 import os
-import re
 import subprocess
 import tempfile
 import textwrap
@@ -12,17 +11,6 @@ import dspy
 from . import config
 from .data import models
 from .types import CodeQualityScores
-
-
-def extract_python_code(text: str) -> str:
-    """Extract Python code from a fenced markdown block.
-
-    - Supports optional leading indentation before fences.
-    - Returns original text if no Python fence is found.
-    """
-    pattern = re.compile(r"^[ \t]*```python\s*\n(.*?)\n[ \t]*```", re.DOTALL | re.MULTILINE)
-    match = pattern.search(text)
-    return match[1].strip() if match else text
 
 
 def check_syntax(code: str) -> tuple[bool, str | None, str | None]:

@@ -18,7 +18,6 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 
 from . import config, ui
-from .analysis import extract_python_code
 from .data import examples, models
 from .evaluation import EvaluationResult, evaluate_refactored_code
 from .modules.code_refactor import CodeRefactor
@@ -37,12 +36,8 @@ def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) 
     if not refactored_code:
         return 0.0
 
-    code_to_evaluate = extract_python_code(refactored_code)
-    if not code_to_evaluate:
-        return 0.0
-
     test_cases = getattr(example, "test_cases", [])
-    eval_result = evaluate_refactored_code(code_to_evaluate, test_cases)
+    eval_result = evaluate_refactored_code(refactored_code, test_cases)
 
     if isinstance(eval_result, Failure):
         return 0.0
@@ -171,10 +166,9 @@ def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[str, st
     raw = getattr(prediction, "refactored_code", None)
     if not raw or not isinstance(raw, str):
         return Failure("No refactored code produced by the model.")
-    code = extract_python_code(raw)
-    if not code or not code.strip():
+    if not raw or not raw.strip():
         return Failure("Extracted refactored code is empty.")
-    return Success(code)
+    return Success(raw.strip())
 
 
 def _evaluate_and_maybe_write(
