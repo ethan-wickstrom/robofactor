@@ -33,3 +33,4 @@ mlflow.db
 
 # Documentation builds
 site/
+.env
