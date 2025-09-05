@@ -1,46 +1,118 @@
-"""
-Main entry point for the command-line interface (CLI) of the refactoring tool.
-"""
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import dspy
 import mlflow
 import typer
+from returns.result import Result
+
+if TYPE_CHECKING:
+    # Imported for type checking only; these names are referenced in annotations.
+    from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
 from returns.result import Failure, Success
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
 
-from . import config, ui, utils
+from . import config, ui
 from .analysis import extract_python_code
-from .dspy_modules import CodeRefactor, RefactoringEvaluator, load_training_data
-from .evaluation import TestCase, evaluate_refactored_code
+from .data import examples, models
+from .evaluation import EvaluationResult, evaluate_refactored_code
+from .modules.code_refactor import CodeRefactor
 
 app = typer.Typer()
 
+def _get_functional_score(eval_data: EvaluationResult) -> float:
+    total_tests = eval_data.functional_check.total_tests
+    passed_tests = eval_data.functional_check.passed_tests
+    return (passed_tests / total_tests) if total_tests > 0 else 1.0
+
+
+def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) -> float:
+    """Calculates a reward score for a refactoring prediction."""
+    refactored_code = getattr(prediction, "refactored_code", "")
+    if not refactored_code:
+        return 0.0
+
+    code_to_evaluate = extract_python_code(refactored_code)
+    if not code_to_evaluate:
+        return 0.0
+
+    test_cases = getattr(example, "test_cases", [])
+    eval_result = evaluate_refactored_code(code_to_evaluate, test_cases)
+
+    if isinstance(eval_result, Failure):
+        return 0.0
+
+    # For now, we'll just use the functional score as the reward.
+    # In the future, we could incorporate quality scores.
+    return _get_functional_score(eval_result.unwrap())
+
+
+def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
+    """Wrapper to adapt reward function signature."""
+    trainset_result = examples.get_examples()
+    if isinstance(trainset_result, Failure):
+        return 0.0
+    train_set = trainset_result.unwrap()
+    code_snippet = inputs["code_snippet"]
+
+    # Find the example in the training set that matches the code snippet
+    # This is inefficient but necessary given the reward_fn signature
+    example = next((ex for ex in train_set if ex.code_snippet == code_snippet), None)
+
+    if example is None:
+        import logging
+        import os
+        logging.warning(f"No matching example found for code_snippet: {code_snippet!r}")
+        if os.environ.get("ROBOFACTOR_DEV_MODE", "0") == "1":
+            raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
+        return 0.0
+
+    return _calculate_reward_score(example, prediction)
+
+class _GEPARefactorMetric:
+    """Metric callable compatible with DSPy's GEPAFeedbackMetric protocol.
+
+    Accepts the full GEPA metric signature with optional predictor-level
+    context and returns either a float score or a `ScoreWithFeedback`.
+    Currently, we compute a functional score based on test execution and
+    return a float. GEPA will wrap this into structured feedback when needed.
+    """
+
+    def __call__(
+        self,
+        gold: dspy.Example,
+        pred: dspy.Prediction,
+        trace: DSPyTrace | None = None,
+        pred_name: str | None = None,
+        pred_trace: DSPyTrace | None = None,
+    ) -> float | ScoreWithFeedback:
+        # Leverage the same scoring logic used by `_reward_fn`.
+        return _calculate_reward_score(gold, pred)
 
 def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
     """Configures warnings, MLflow, and returns a rich Console."""
-    utils.suppress_pydantic_warnings()
     console = Console()
     if tracing:
         console.print(f"[bold yellow]MLflow tracing enabled. URI: {mlflow_uri}[/bold yellow]")
         mlflow.set_tracking_uri(mlflow_uri)
         mlflow.set_experiment(mlflow_experiment)
-        mlflow.dspy.autolog(log_compiles=True, log_traces=True)
+        mlflow.dspy.autolog(log_compiles=True, log_traces=True)  # pyright: ignore[reportPrivateImportUsage] mlflow.dspy is lazy-loaded
     return console
 
 
 def _load_or_compile_model(
-    optimizer_path: Path, optimize: bool, console: Console, prompt_llm: dspy.LM, task_llm: dspy.LM
+    optimizer_path: Path, optimize: bool, console: Console, reflection_lm: dspy.LM
 ) -> dspy.Module:
     """Loads an optimized DSPy model or compiles a new one."""
     refactorer = CodeRefactor()
     self_correcting_refactorer = dspy.Refine(
         module=refactorer,
-        reward_fn=RefactoringEvaluator(),
+        reward_fn=_reward_fn,
         threshold=config.REFINEMENT_THRESHOLD,
         N=config.REFINEMENT_COUNT,
     )
@@ -49,18 +121,26 @@ def _load_or_compile_model(
         console.print(
             "[yellow]No optimized model found or --optimize set. Running optimization...[/yellow]"
         )
-        teleprompter = dspy.MIPROv2(
-            metric=RefactoringEvaluator(),
-            prompt_model=prompt_llm,
-            task_model=task_llm,
+        teleprompter = dspy.GEPA(
+            metric=_GEPARefactorMetric(),
             auto="light",
+            reflection_lm=reflection_lm,
             num_threads=8,
         )
-        teleprompter.compile(
-            refactorer, trainset=load_training_data(), requires_permission_to_run=False
-        )
-        console.print(f"Optimization complete. Saving to {optimizer_path}...")
-        self_correcting_refactorer.save(str(optimizer_path), save_program=True)
+        trainset_result = examples.get_examples()
+        match trainset_result:
+            case Success(trainset):
+                teleprompter.compile(refactorer, trainset=trainset)
+                console.print(f"Optimization complete. Saving to {optimizer_path}...")
+                self_correcting_refactorer.save(str(optimizer_path), save_program=True)
+            case Failure(err):
+                console.print(
+                    Panel(
+                        f"[bold red]Failed to load training examples:[/bold red]\n{err}",
+                        border_style="red",
+                    )
+                )
+                console.print("[yellow]Proceeding without optimization.[/yellow]")
     else:
         console.print(f"Loading optimized model from {optimizer_path}...")
         self_correcting_refactorer = dspy.load(str(optimizer_path))
@@ -69,13 +149,7 @@ def _load_or_compile_model(
     return self_correcting_refactorer
 
 
-def _run_refactoring_on_file(
-    console: Console, refactorer: dspy.Module, script_path: Path, write: bool
-):
-    """Reads a file, runs the refactoring process, and displays results."""
-    console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
-    source_code = script_path.read_text(encoding="utf-8")
-
+def _render_original(console: Console, script_path: Path, source_code: str) -> None:
     console.print(
         Panel(
             Syntax(source_code, "python", theme=config.RICH_SYNTAX_THEME, line_numbers=True),
@@ -84,18 +158,29 @@ def _run_refactoring_on_file(
         )
     )
 
-    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
-        "code_snippet"
-    )
-    prediction = refactorer(**refactor_example.inputs())
-    ui.display_refactoring_process(console, prediction)
 
-    refactored_code = extract_python_code(prediction.refactored_code)
-    raw_tests = refactor_example.get("test_cases", [])
-    tests = [TestCase(**tc) for tc in raw_tests] if raw_tests else []
+def _build_tests(raw_tests: list[dict] | None) -> list[models.TestCase]:
+    return [models.TestCase(**tc) for tc in raw_tests] if raw_tests else []
 
+
+def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[str, str]:
+    """Extract code from prediction and validate it's non-empty.
+
+    Returns Success(code) or Failure(message).
+    """
+    raw = getattr(prediction, "refactored_code", None)
+    if not raw or not isinstance(raw, str):
+        return Failure("No refactored code produced by the model.")
+    code = extract_python_code(raw)
+    if not code or not code.strip():
+        return Failure("Extracted refactored code is empty.")
+    return Success(code)
+
+
+def _evaluate_and_maybe_write(
+    console: Console, refactored_code: str, tests: list[models.TestCase], script_path: Path, write: bool
+) -> None:
     evaluation = evaluate_refactored_code(refactored_code, tests)
-
     match evaluation:
         case Success(eval_data):
             ui.display_evaluation_results(console, eval_data)
@@ -115,6 +200,41 @@ def _run_refactoring_on_file(
             if write:
                 console.print(
                     "[bold yellow]Skipping write-back due to evaluation failure.[/bold yellow]"
+                )
+
+
+def _run_refactoring_on_file(
+    console: Console, refactorer: dspy.Module, script_path: Path, write: bool
+) -> None:
+    """Reads a file, runs the refactoring process, and displays results."""
+    console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
+    source_code = script_path.read_text(encoding="utf-8")
+    _render_original(console, script_path, source_code)
+
+    # Build model example and run prediction
+    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
+        "code_snippet"
+    )
+    prediction = refactorer(**refactor_example.inputs())
+    ui.display_refactoring_process(console, prediction)
+
+    # Safely extract non-empty Python code
+    extracted = _safe_extract_refactored_code(prediction)
+    match extracted:
+        case Success(refactored_code):
+            raw_tests = refactor_example.get("test_cases", [])
+            tests = _build_tests(raw_tests)
+            _evaluate_and_maybe_write(console, refactored_code, tests, script_path, write)
+        case Failure(msg):
+            console.print(
+                Panel(
+                    f"[bold yellow]No usable refactored code:[/bold yellow]\n{msg}",
+                    border_style="yellow",
+                )
+            )
+            if write:
+                console.print(
+                    "[bold yellow]Skipping write-back due to missing refactored code.[/bold yellow]"
                 )
 
 
@@ -155,16 +275,16 @@ def main(
     mlflow_experiment: str = typer.Option(
         config.DEFAULT_MLFLOW_EXPERIMENT_NAME, "--mlflow-experiment", help="MLflow experiment name."
     ),
-):
+) -> None:
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""
     console = _setup_environment(tracing, mlflow_uri, mlflow_experiment)
 
     task_llm = dspy.LM(task_llm_model, max_tokens=config.TASK_LLM_MAX_TOKENS)
-    prompt_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS)
+    reflection_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS)
     dspy.configure(lm=task_llm)
 
     refactorer = _load_or_compile_model(
-        config.OPTIMIZER_FILENAME, optimize, console, prompt_llm, task_llm
+        config.OPTIMIZER_FILENAME, optimize, console, reflection_llm
     )
 
     target_path: Path | None = None
@@ -172,7 +292,12 @@ def main(
         target_path = Path(__file__)
         console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
     elif path:
-        target_path = path
+        path_obj = Path(path)
+        if path_obj.is_file() and path_obj.suffix == ".py":
+            target_path = path_obj
+        else:
+            console.print(f"[red]Provided path '{path}' is not a Python (.py) file.[/red]")
+            return
 
     if target_path:
         _run_refactoring_on_file(console, refactorer, target_path, write)

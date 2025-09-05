@@ -1,38 +1,12 @@
-"""
-Data models and core logic for evaluating refactored code.
-
-This module defines the structures for test cases, quality scores, and
-evaluation results, and contains the pure function for performing the evaluation.
-It leverages the 'returns' library for robust, type-safe error handling using
-a railway-oriented programming approach.
-"""
-
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
-from pydantic import BaseModel, Field
 from returns.result import Failure, Result, Success, safe
 
-from . import analysis
-
-
-class TestCase(BaseModel):
-    """A single, executable test case for a function."""
-
-    args: list[Any] = Field(default_factory=list)
-    kwargs: dict[str, Any] = Field(default_factory=dict)
-    expected_output: Any
-
-
-class CodeQualityScores(BaseModel):
-    """Holds various code quality metrics."""
-
-    linting_score: float
-    complexity_score: float
-    typing_score: float
-    docstring_score: float
-    linting_issues: list[str] = Field(default_factory=list)
+from robofactor import analysis
+from robofactor.data import models
+from robofactor.types import CodeQualityScores
 
 
 class FunctionalCheckResult(NamedTuple):
@@ -78,7 +52,7 @@ def _check_quality(code: str, func_name: str) -> CodeQualityScores:
 
 @safe
 def _check_functional_correctness(
-    code: str, func_name: str, tests: list[TestCase]
+    code: str, func_name: str, tests: list[models.TestCase]
 ) -> FunctionalCheckResult:
     """
     Runs functional tests and returns the pass rate.
@@ -93,7 +67,7 @@ def _check_functional_correctness(
 
 
 def evaluate_refactored_code(
-    code: str, tests: list[TestCase]
+    code: str, tests: list[models.TestCase]
 ) -> Result[EvaluationResult, str]:
     """
     Performs a full evaluation of the refactored code.

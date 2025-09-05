@@ -1,10 +1,3 @@
-"""
-Presentation logic for displaying results in the console.
-
-This module uses the 'rich' library to create user-friendly, formatted
-output for the analysis, plan, and evaluation phases.
-"""
-
 import dspy
 from rich.console import Console
 from rich.panel import Panel
