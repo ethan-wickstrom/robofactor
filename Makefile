@@ -1,17 +1,14 @@
-.PHONY: help install install-dev clean test test-unit test-integration lint format type-check check build docs serve-docs readme
+.PHONY: help install install-dev clean test lint format type-check check readme
 
 # Default target
 help:
 	@echo "Available commands:"
 	@echo "  install       Install the package in production mode"
 	@echo "  install-dev   Install the package in development mode"
-	@echo "  clean         Remove build artifacts and caches"
-	@echo "  test          Run all tests"
-	@echo "  test-unit     Run unit tests only"
-	@echo "  test-integration Run integration tests only"
-	@echo "  lint          Run linting checks"
-	@echo "  format        Format code with black and isort"
-	@echo "  type-check    Run mypy type checking"
+	@echo "  test          Run all tests with coverage"
+	@echo "  lint          Run linting checks with Ruff"
+	@echo "  format        Format code with Ruff"
+	@echo "  type-check    Run type checking with Ty"
 	@echo "  check         Run all checks (lint, type-check, test)"
 	@echo "  readme        Generate README.md using DSPy"
 
@@ -26,26 +23,15 @@ install-dev:
 test:
 	uv run pytest
 
-test-unit:
-	uv run pytest tests/unit
-
-test-integration:
-	uv run pytest tests/integration
-
-test-coverage:
-	uv run pytest --cov-report=html
-	@echo "Coverage report generated in htmlcov/index.html"
-
 # Code quality
 lint:
 	uv run ruff check src tests --fix
 
 format:
 	uv run ruff format src tests
-	uv run isort src tests
 
 type-check:
-	uv run mypy src
+	uv run ty check
 
 # Combined checks
 check: lint type-check test

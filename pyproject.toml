@@ -88,6 +88,7 @@ addopts = [
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]
+python_classes = ["Test*[!e]"]
 
 [tool.coverage.run]
 source = ["src/robofactor"]

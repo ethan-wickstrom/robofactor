@@ -27,14 +27,14 @@ The core technologies driving Robofactor include:
 
 *   **DSPy (`dspy-ai`):** The project is built on the DSPy framework, which provides a structured way to program with language models. It is used to generate refactoring plans and implement code changes.
 *   **Railway-Oriented Pipelines (`returns`):** The evaluation process is constructed as a robust pipeline using the `returns` library. This allows for a series of checks (syntax, quality, functional correctness) where any failure gracefully halts the process and returns a descriptive error.
-*   **Code Quality Analysis (`flake8`):** Code quality is programmatically measured using `flake8`, providing objective metrics to evaluate the effectiveness of the refactoring.
+*   **Code Quality Analysis (`ruff`):** Code quality is programmatically measured using `ruff`, providing objective metrics to evaluate the effectiveness of the refactoring.
 *   **Rich CLI (`rich`):** All terminal output, from the refactoring process to the final evaluation results, is formatted for clarity and readability using the `rich` library.
 
 ## Key Features
 
 *   **AI-Powered Refactoring**: Leverages a `CodeRefactor` module built with DSPy (`dspy_modules.py`) to intelligently analyze and generate refactoring suggestions for Python code snippets.
-*   **Comprehensive Evaluation Pipeline**: Ensures the quality and correctness of refactored code through a multi-stage process (`evaluation.py`). This pipeline includes syntax validation (`check_syntax`), quality scoring using `flake8` and AST analysis (`check_code_quality`), and functional correctness checks against provided test cases (`check_functional_correctness`).
-*   **Advanced Code Analysis**: Performs deep static analysis of Python code by parsing it into an Abstract Syntax Tree (AST). The `function_extraction.py` module is dedicated to extracting detailed information about functions, decorators, and parameters directly from the source code structure.
+*   **Comprehensive Evaluation Pipeline**: Ensures the quality and correctness of refactored code through a multi-stage process (`evaluation.py`). This pipeline includes syntax validation (`check_syntax`), quality scoring using `ruff` and AST analysis (`check_code_quality`), and functional correctness checks against provided test cases (`check_functional_correctness`).
+*   **Advanced Code Analysis**: Performs deep static analysis of Python code by parsing it into an Abstract Syntax Tree (AST) to extract syntax, quality, and functional correctness metrics.
 *   **DSPy Model Optimization**: Features the ability to compile and optimize the underlying DSPy program for improved performance and accuracy. This can be triggered using the `--optimize` flag in the CLI (`main.py`).
 *   **Interactive CLI**: Provides a user-friendly command-line interface built with `typer`. It uses `rich` to deliver clear, well-formatted, and colorized output for refactoring plans and evaluation results (`main.py`, `ui.py`).
 *   **MLflow Integration**: Comes with built-in support for experiment tracing using MLflow. Users can configure the MLflow tracking URI and experiment name via CLI arguments (`--mlflow-uri`, `--mlflow-experiment`) to log and monitor refactoring runs (`main.py`).
@@ -116,16 +116,16 @@ robofactor --help
 
 Robofactor follows a structured, multi-stage process to analyze, refactor, and evaluate Python code. The architecture is designed to be robust and transparent, leveraging modern tools for each step.
 
-1.  **Code Parsing & Extraction**
-    The process begins by parsing the target Python file. Using Python's built-in `ast` (Abstract Syntax Tree) module, the tool traverses the code's structure. As detailed in `src/robofactor/function_extraction.py`, it identifies every function and extracts comprehensive metadata, including its name, parameters, decorators, and docstring. This creates a structured representation of the code to be refactored.
+1.  **Code Parsing & Analysis**
+    The process begins by parsing the target Python file using Python's built-in `ast` (Abstract Syntax Tree) module. The tool traverses the code's structure, extracting syntax information and identifying functions. This creates a structured representation of the code to be refactored.
 
 2.  **LLM-Powered Refactoring with DSPy**
-    The extracted function code is then passed to a `dspy.Module`, specifically the `CodeRefactor` class found in `src/robofactor/dspy_modules.py`. This module contains a sophisticated prompt that instructs a Large Language Model (LLM) to analyze the provided code snippet, identify areas for improvement, and generate a refactored version. The LLM's goal is to enhance code quality, readability, and performance while preserving its original functionality.
+    The code is then passed to a `dspy.Module`, specifically the `CodeRefactor` class found in `src/robofactor/modules/code_refactor.py`. This module contains a sophisticated prompt that instructs a Large Language Model (LLM) to analyze the provided code snippet, identify areas for improvement, and generate a refactored version. The LLM's goal is to enhance code quality, readability, and performance while preserving its original functionality.
 
 3.  **Programmatic Evaluation Pipeline**
     Once the LLM returns the refactored code, it undergoes a rigorous, automated evaluation pipeline defined in `src/robofactor/evaluation.py`. This pipeline, built using the `returns` library for robust error handling (railway-oriented programming), consists of several checks:
     *   **Syntax Check**: Verifies that the generated code is valid Python.
-    *   **Quality Check**: Uses `flake8` to score the code against PEP 8 standards and other common issues.
+    *   **Quality Check**: Uses `ruff` to score the code against PEP 8 standards and other common issues.
     *   **Functional Correctness**: Executes the refactored code against a set of predefined test cases to ensure it still produces the correct output.
     If any step fails, the pipeline short-circuits and reports the failure.
 
@@ -145,7 +145,7 @@ cd robofactor
 
 ### Setup
 
-To install all dependencies, including development tools like `ruff`, `mypy`, and `pytest`, run the following command. This will create a virtual environment and install all required packages.
+To install all dependencies, including development tools like `ruff`, `ty`, and `pytest`, run the following command. This will create a virtual environment and install all required packages.
 
 ```bash
 make install-dev
@@ -167,11 +167,11 @@ The `Makefile` includes several targets to streamline the development workflow:
     ```bash
     make lint
     ```
-*   **Formatting:** Format the code using Ruff Formatter and isort.
+*   **Formatting:** Format the code using Ruff.
     ```bash
     make format
     ```
-*   **Type-checking:** Perform static type analysis with mypy.
+*   **Type-checking:** Perform static type analysis with Ty.
     ```bash
     make type-check
     ```
