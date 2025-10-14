@@ -18,14 +18,10 @@ def collect_with_context[T](
     raw_items: list[Any], item_parser: Parser[T], error_context: str = "item"
 ) -> Result[list[T], str]:
     """Collect with enhanced error context for better debugging."""
-    parsed_items = []
     for i, raw_item in enumerate(raw_items):
-        result = parse(raw_item, item_parser)
-        if isinstance(result, Failure):
+        if isinstance(result := parse(raw_item, item_parser), Failure):
             return Failure(f"Error parsing {error_context} {i}: {result.failure()}")
-        parsed_items.append(result.unwrap())
-
-    return Success(parsed_items)
+    return parse(raw_items, ListParser(item_parser))
 
 
 def collect_partial[T](raw_items: list[Any], item_parser: Parser[T]) -> tuple[list[T], list[str]]:
@@ -36,15 +32,13 @@ def collect_partial[T](raw_items: list[Any], item_parser: Parser[T]) -> tuple[li
     """
     successes = []
     errors = []
-
     for i, raw_item in enumerate(raw_items):
-        result = parse(raw_item, item_parser)
-        if isinstance(result, Success):
-            successes.append(result.unwrap())
-        else:
-            errors.append(f"Item {i}: {result.failure()}")
-
-    return successes, errors
+        match parse(raw_item, item_parser):
+            case Success(value):
+                successes.append(value)
+            case Failure(error):
+                errors.append(f"Item {i}: {error}")
+    return (successes, errors)
 
 
 __all__ = ["collect", "collect_partial", "collect_with_context"]
