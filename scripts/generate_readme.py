@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import tomllib
 from collections.abc import Iterable
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import typer
+from returns.result import Failure
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -55,8 +57,6 @@ def _read_makefile_optional() -> str | None:
 
 def _capture_cli_help_optional() -> str | None:
     try:
-        import importlib
-
         from typer.testing import CliRunner
 
         module = importlib.import_module("robofactor.main")
@@ -138,8 +138,6 @@ def _load_and_extract_signatures(fe_path: Path, paths: Iterable[Path]) -> tuple[
     format_fn = getattr(module, "format_function_signature", None)
     if parse_fn is None or format_fn is None:
         return ()
-
-    from returns.result import Failure
 
     modules: list[ModuleApi] = []
     for path in paths:
