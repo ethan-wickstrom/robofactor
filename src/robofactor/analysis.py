@@ -1,20 +1,18 @@
 import ast
-import json
-import subprocess
 import tempfile
-import textwrap
-from itertools import filterfalse
 from pathlib import Path
-from typing import cast
 
 import dspy
+
+from linting.ruff_tool import format_lint_issue, is_complexity_issue, run_ruff_json
+from testing import check_functional_correctness as _testing_check_functional_correctness
+from type_checking.metrics import docstring_and_typing_scores
 
 from . import config
 from .data import models
 from .types import (
     ComplexityReport,
     DocumentationReport,
-    LintDiagnostic,
     LintingReport,
     PythonCode,
     QualityMetrics,
@@ -34,27 +32,6 @@ def check_syntax(code: PythonCode | str) -> tuple[bool, str | None, str | None]:
         return (False, None, f"Syntax Error: {e}")
 
 
-def _get_ast_based_scores(tree: ast.AST, func_name: str | None) -> tuple[float, float]:
-    """Calculate docstring and typing coverage scores from AST."""
-    all_funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
-    if not all_funcs:
-        return (0.0, 0.0)
-
-    target_funcs = [f for f in all_funcs if f.name == func_name] if func_name else all_funcs
-    if not target_funcs:
-        return (0.0, 0.0)
-
-    docstring_score = sum(1.0 for f in target_funcs if ast.get_docstring(f)) / len(target_funcs)
-    typed_elements = sum(
-        sum(arg.annotation is not None for arg in f.args.args) + (f.returns is not None)
-        for f in target_funcs
-    )
-    typeable_elements = sum(len(f.args.args) + 1 for f in target_funcs)
-    typing_score = typed_elements / typeable_elements if typeable_elements > 0 else 0.0
-
-    return (docstring_score, typing_score)
-
-
 def check_code_quality(code: PythonCode | str, func_name: str | None = None) -> QualityMetrics:
     """Analyze Python code quality using ruff and AST metrics."""
     source = code.code if isinstance(code, dspy.Code) else code
@@ -63,87 +40,32 @@ def check_code_quality(code: PythonCode | str, func_name: str | None = None) -> 
         tmp_path = Path(tmp.name)
 
     try:
-        return _compute_quality_scores(tmp_path, source, func_name)
+        records = run_ruff_json(tmp_path)
+
+        complexity_issues = [format_lint_issue(rec) for rec in records if is_complexity_issue(rec)]
+        linting_issues = [format_lint_issue(rec) for rec in records if not is_complexity_issue(rec)]
+
+        complexity_score = 0.0 if complexity_issues else 1.0
+        linting_score = max(
+            0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues))
+        )
+
+        docstring_score, typing_score = docstring_and_typing_scores(
+            ast.parse(source), func_name
+        )
+
+        return QualityMetrics(
+            linting=LintingReport(score=linting_score, issues=linting_issues),
+            complexity=ComplexityReport(score=complexity_score, warnings=complexity_issues),
+            typing=TypingReport(score=typing_score),
+            documentation=DocumentationReport(score=docstring_score),
+        )
     finally:
         tmp_path.unlink(missing_ok=True)
-
-
-def _format_lint_issue(rec: LintDiagnostic) -> str:
-    """Format lint diagnostic into human-readable string."""
-    location = rec.get("location") or {}
-    return (
-        f"{rec.get('filename', '')}:{location.get('row', 0)}:{location.get('column', 0)} "
-        f"{rec.get('code', '')} {rec.get('message', '')}"
-    )
-
-
-def _is_complexity_issue(rec: LintDiagnostic) -> bool:
-    """Check if diagnostic is a complexity warning."""
-    return rec.get("code") == config.FLAKE8_COMPLEXITY_CODE
-
-
-def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> QualityMetrics:
-    """Compute quality scores from ruff output and AST analysis."""
-    result = subprocess.run(
-        ["ruff", "check", "--output-format", "json", str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    records: list[LintDiagnostic] = (
-        cast(list[LintDiagnostic], json.loads(result.stdout)) if result.stdout else []
-    )
-
-    complexity_issues = list(map(_format_lint_issue, filter(_is_complexity_issue, records)))
-    linting_issues = list(map(_format_lint_issue, filterfalse(_is_complexity_issue, records)))
-
-    complexity_score = 0.0 if complexity_issues else 1.0
-    linting_score = max(0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues)))
-
-    docstring_score, typing_score = _get_ast_based_scores(ast.parse(code), func_name)
-
-    return QualityMetrics(
-        linting=LintingReport(score=linting_score, issues=linting_issues),
-        complexity=ComplexityReport(score=complexity_score, warnings=complexity_issues),
-        typing=TypingReport(score=typing_score),
-        documentation=DocumentationReport(score=docstring_score),
-    )
-
-
-def _build_execution_script(func_name: str, test_case: models.TestCase) -> str:
-    """Build Python script to execute function with test case arguments."""
-    return textwrap.dedent(
-        f"""
-        import json
-
-        args = json.loads('''{json.dumps(test_case.args)}''')
-        kwargs = json.loads('''{json.dumps(test_case.kwargs)}''')
-
-        result = {func_name}(*args, **kwargs)
-        print(json.dumps(result))
-        """
-    )
 
 
 def check_functional_correctness(
     code: PythonCode | str, func_name: str, test_cases: list[models.TestCase]
 ) -> int:
     """Execute test cases against code in sandboxed interpreter, return pass count."""
-    if not test_cases:
-        return 0
-
-    source = code.code if isinstance(code, dspy.Code) else code
-
-    def _run_test(interp: dspy.PythonInterpreter, test: models.TestCase) -> bool:
-        try:
-            actual_json = interp.execute(_build_execution_script(func_name, test))
-            actual = json.loads(actual_json)
-            expected = json.loads(json.dumps(test.expected_output))
-            return actual == expected
-        except Exception:
-            return False
-
-    with dspy.PythonInterpreter() as interp:
-        interp.execute(source)
-        return sum(_run_test(interp, test) for test in test_cases)
+    return _testing_check_functional_correctness(code, func_name, test_cases)
