@@ -226,10 +226,10 @@ def _map_parameter_defaults(args: ast.arguments) -> dict[str, str]:
     """
     defaults_map = {}
 
-    # Positional and positional-or-keyword defaults
-    all_positional_args = args.posonlyargs + args.args
     num_defaults = len(args.defaults)
     if num_defaults > 0:
+        # Positional and positional-or-keyword defaults
+        all_positional_args = args.posonlyargs + args.args
         # Defaults correspond to the last `num_defaults` positional arguments.
         args_with_defaults = all_positional_args[-num_defaults:]
         for arg, default_node in zip(args_with_defaults, args.defaults, strict=False):
@@ -241,7 +241,7 @@ def _map_parameter_defaults(args: ast.arguments) -> dict[str, str]:
         for arg, default_node in zip(args.kwonlyargs, args.kw_defaults, strict=False)
         if default_node is not None
     }
-    defaults_map.update(kw_defaults)
+    defaults_map |= kw_defaults
 
     return defaults_map
 
@@ -518,7 +518,16 @@ def format_function_signature(func: FunctionInfo) -> str:
     """
 
     def format_param(p: Parameter) -> str:
-        """Formats a single parameter object into a string."""
+        """
+        Formats a single parameter object into a string.
+
+        Args:
+            p: The Parameter object to format.
+
+        Returns:
+            A string representing the parameter, including its name, type
+            annotation, and default value (if any).
+        """
         res = p.name
         if p.annotation:
             res += f": {p.annotation}"
@@ -526,54 +535,35 @@ def format_function_signature(func: FunctionInfo) -> str:
             res += f" = {p.default}"
         return res
 
+    params = list(func.parameters)
     param_parts: list[str] = []
-    pos_only_ended = False
-    var_pos_added = False
 
-    for p in func.parameters:
-        match p.kind:
-            case ParameterKind.POSITIONAL_ONLY:
-                param_parts.append(format_param(p))
-            case ParameterKind.POSITIONAL_OR_KEYWORD:
-                # Add '/' separator if positional-only args exist and this is the first positional-or-keyword arg.
-                if not pos_only_ended and any(
-                    param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
-                ):
-                    param_parts.append("/")
-                    pos_only_ended = True
-                param_parts.append(format_param(p))
-            case ParameterKind.VAR_POSITIONAL:
-                # Add '/' separator if positional-only args exist and this is the first var-positional arg.
-                if not pos_only_ended and any(
-                    param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
-                ):
-                    param_parts.append("/")
-                    pos_only_ended = True
-                param_parts.append(f"*{p.name}")
-                var_pos_added = True
-            case ParameterKind.KEYWORD_ONLY:
-                # Add '/' separator if positional-only args exist and this is the first keyword-only arg.
-                if not pos_only_ended and any(
-                    param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
-                ):
-                    param_parts.append("/")
-                    pos_only_ended = True
-                # Add '*' separator if no var-positional arg was present and this is the first keyword-only arg.
-                if not var_pos_added:
-                    param_parts.append("*")
-                    var_pos_added = True
-                param_parts.append(format_param(p))
-            case ParameterKind.VAR_KEYWORD:
-                # Add '*' separator if no var-positional arg was present and this is the first var-keyword arg.
-                if not var_pos_added:
-                    param_parts.append("*")
-                param_parts.append(f"**{p.name}")
+    pos_only = [p for p in params if p.kind == ParameterKind.POSITIONAL_ONLY]
+    rest = [p for p in params if p.kind != ParameterKind.POSITIONAL_ONLY]
 
-    # Ensure '/' is added if there are positional-only args but no positional-or-keyword or var-positional args.
-    if not pos_only_ended and any(
-        param.kind == ParameterKind.POSITIONAL_ONLY for param in func.parameters
-    ):
+    # Positional-only segment
+    for p in pos_only:
+        param_parts.append(format_param(p))
+    if pos_only:
         param_parts.append("/")
+
+    # Determine where to insert '*' if no var-positional is present
+    has_var_pos = any(p.kind == ParameterKind.VAR_POSITIONAL for p in rest)
+    needs_star = (not has_var_pos) and any(
+        p.kind in (ParameterKind.KEYWORD_ONLY, ParameterKind.VAR_KEYWORD) for p in rest
+    )
+
+    for p in rest:
+        if needs_star and p.kind in (ParameterKind.KEYWORD_ONLY, ParameterKind.VAR_KEYWORD):
+            param_parts.append("*")
+            needs_star = False
+
+        if p.kind == ParameterKind.VAR_POSITIONAL:
+            param_parts.append(f"*{p.name}")
+        elif p.kind == ParameterKind.VAR_KEYWORD:
+            param_parts.append(f"**{p.name}")
+        else:
+            param_parts.append(format_param(p))
 
     params_str = ", ".join(param_parts)
     async_prefix = "async " if func.is_async else ""
