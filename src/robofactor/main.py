@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 import dspy
 import mlflow
@@ -72,6 +73,12 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
         return 0.0
 
     return _calculate_reward_score(example, prediction)
+
+
+class _SupportsTestCase(Protocol):
+    args: list[Any]
+    kwargs: dict[str, Any]
+    expected_output: Any
 
 
 class _GEPARefactorMetric(GEPAFeedbackMetric):
@@ -161,21 +168,29 @@ def _render_original(console: Console, script_path: Path, source_code: str) -> N
 
 
 def _build_tests(
-    raw_tests: list[dict[str, Any]] | list[models.TestCase] | None,
+    raw_tests: Iterable[models.TestCase | Mapping[str, Any] | _SupportsTestCase] | None,
 ) -> list[models.TestCase]:
-    if not raw_tests:
-        return []
-    first = raw_tests[0]
-    if isinstance(first, models.TestCase):
-        return list(raw_tests)  # already structured
-    return [
-        models.TestCase(
-            args=tc["args"] if isinstance(tc, dict) else tc.args,
-            kwargs=tc["kwargs"] if isinstance(tc, dict) else tc.kwargs,
-            expected_output=tc["expected_output"] if isinstance(tc, dict) else tc.expected_output,
+    return [] if raw_tests is None else list(map(_to_test_case, raw_tests))
+
+
+def _to_test_case(
+    test_case: models.TestCase | Mapping[str, Any] | _SupportsTestCase,
+) -> models.TestCase:
+    if isinstance(test_case, models.TestCase):
+        return test_case
+    if not isinstance(test_case, Mapping):
+        # Must be _SupportsTestCase (structural protocol type)
+        return models.TestCase(
+            args=test_case.args,
+            kwargs=test_case.kwargs,
+            expected_output=test_case.expected_output,
         )
-        for tc in raw_tests
-    ]
+    # Must be Mapping[str, Any]
+    return models.TestCase(
+        args=test_case["args"],
+        kwargs=test_case["kwargs"],
+        expected_output=test_case["expected_output"],
+    )
 
 
 def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonCode, str]:
