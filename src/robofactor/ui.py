@@ -6,7 +6,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from . import analysis, config
+from . import config
 from .evaluation import EvaluationResult
 
 
@@ -56,11 +56,10 @@ def display_refactoring_process(console: Console, prediction: dspy.Prediction) -
         plan_text.append("\n")
     console.print(Panel(plan_text, title="[bold cyan]Refactoring Plan[/bold cyan]"))
 
-    extracted_code = analysis.extract_python_code(artifact.code).code
     console.print(
         Panel(
             Syntax(
-                extracted_code,
+                artifact.code.code,
                 "python",
                 theme=config.RICH_SYNTAX_THEME,
                 line_numbers=True,

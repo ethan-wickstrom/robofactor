@@ -3,7 +3,6 @@ from pathlib import Path
 import dspy
 from returns.result import Result
 
-from ..types import create_python_code
 from ..utils import load_json
 from ._internal.collectors import collect
 from ._internal.parsers import BasicParser, DictParser, ListParser
@@ -38,9 +37,9 @@ def _create_dspy_example_parser() -> DictParser[dspy.Example]:
             "test_cases": test_cases_parser,
         },
         constructor=lambda code_snippet, test_cases: dspy.Example(
-            code_snippet=create_python_code(code_snippet),
+            code_snippet=code_snippet,
             test_cases=test_cases,
-        ).with_inputs("code_snippet"),
+        ).with_inputs("code_snippet", "test_cases"),
     )
 
 

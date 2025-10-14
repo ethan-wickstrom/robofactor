@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 import dspy
 from pydantic import BaseModel, Field
@@ -13,13 +13,6 @@ if TYPE_CHECKING:
     type PythonCode = _DSPyCode[Literal["python"]]
 else:
     PythonCode = dspy.Code[Literal["python"]]
-
-
-def create_python_code(source: str) -> PythonCode:
-    """Construct a DSPy Python code artifact from raw source."""
-    cls = cast(type[BaseModel], dspy.Code[Literal["python"]])
-    instance = cls.model_validate({"code": source})
-    return cast(PythonCode, instance)
 
 
 class OpportunityCategory(str, Enum):
@@ -34,25 +27,24 @@ class OpportunityCategory(str, Enum):
     TESTING = "TESTING"
     ROBUSTNESS = "ROBUSTNESS"
     MAINTAINABILITY = "MAINTAINABILITY"
+    CLEANLINESS = "CLEANLINESS"
     OTHER = "OTHER"
 
     @classmethod
     def _missing_(cls, value: object) -> OpportunityCategory | None:
+        """Handle alternative category names and normalize input."""
         if not isinstance(value, str):
             return None
+
         normalized = value.strip().replace("-", "_").replace(" ", "_").upper()
-        for member in cls:
-            if member.value == normalized:
-                return member
+        if member := next((m for m in cls if m.value == normalized), None):
+            return member
 
         alias_map = {
             "ERRORHANDLING": cls.ERROR_HANDLING,
-            "ERROR_HANDLING": cls.ERROR_HANDLING,
             "ERRORHANDLNG": cls.ERROR_HANDLING,
             "ROBUST": cls.ROBUSTNESS,
-            "ROBUSTNESS": cls.ROBUSTNESS,
             "MAINTAIN": cls.MAINTAINABILITY,
-            "MAINTAINABILITY": cls.MAINTAINABILITY,
         }
         return alias_map.get(normalized)
 
@@ -90,23 +82,22 @@ class PlanStepFocus(str, Enum):
 
     @classmethod
     def _missing_(cls, value: object) -> PlanStepFocus | None:
+        """Handle alternative focus names and normalize input."""
         if not isinstance(value, str):
             return None
+
         normalized = value.strip().replace("-", "_").replace(" ", "_").lower()
-        for member in cls:
-            if member.value == normalized:
-                return member
+        if member := next((m for m in cls if m.value == normalized), None):
+            return member
 
         alias_map = {
             "ROBUST": cls.ROBUSTNESS,
-            "ROBUSTNESS": cls.ROBUSTNESS,
             "ERROR_HANDLING": cls.ROBUSTNESS,
             "ERRORHANDLING": cls.ROBUSTNESS,
             "MAINTAIN": cls.MAINTAINABILITY,
-            "MAINTAINABILITY": cls.MAINTAINABILITY,
             "DOCS": cls.DOCUMENTATION,
         }
-        return alias_map.get(normalized)
+        return alias_map.get(normalized.upper())
 
 
 class PlanStep(BaseModel):
@@ -174,6 +165,14 @@ class RecommendationPriority(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
 
+    @classmethod
+    def _missing_(cls, value: object) -> RecommendationPriority | None:
+        """Handle priority normalization."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return next((m for m in cls if m.value == normalized), None)
+        return None
+
 
 class EvaluationRecommendation(BaseModel):
     """Actionable recommendation produced during final evaluation."""
@@ -225,5 +224,4 @@ __all__ = [
     "RefactoringOpportunity",
     "RefactoringPlanModel",
     "TypingReport",
-    "create_python_code",
 ]
