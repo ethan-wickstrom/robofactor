@@ -23,4 +23,3 @@ def test_get_examples_propagates_load_failure(monkeypatch):
     res = examples.get_examples()
     assert isinstance(res, Failure)
     assert res.failure() == "boom"
-

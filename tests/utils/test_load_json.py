@@ -19,4 +19,3 @@ def test_load_json_failure(tmp_path: Path):
     res = load_json(p)
     assert isinstance(res, Failure)
     assert "JSON" in res.failure() or "Expecting" in res.failure()
-

@@ -50,4 +50,3 @@ def test_dict_parser_success_and_missing_field() -> None:
     missing = parser.parse({"a": 7})
     assert isinstance(missing, Failure)
     assert "Missing required field: b" in missing.failure()
-

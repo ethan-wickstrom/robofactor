@@ -34,4 +34,3 @@ def test_collect_partial_returns_both_success_and_errors() -> None:
     assert successes == [1, 3]
     assert len(errors) == 2
     assert errors[0].startswith("Item 1:") and errors[1].startswith("Item 3:")
-
