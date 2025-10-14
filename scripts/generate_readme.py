@@ -18,15 +18,18 @@ README_PATH = PROJECT_ROOT / "README.md"
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
 MAKEFILE_PATH = PROJECT_ROOT / "Makefile"
 
+
 @dataclass(frozen=True)
 class ProjectMeta:
     name: str
     description: str
 
+
 @dataclass(frozen=True)
 class ModuleApi:
     module: str
     signatures: tuple[str, ...]
+
 
 @dataclass(frozen=True)
 class ProjectContext:
@@ -40,19 +43,23 @@ class ProjectContext:
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
+
 def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
+
 
 def _list_source_modules(directory: Path) -> tuple[Path, ...]:
     if not directory.exists():
         return ()
     return tuple(p for p in directory.glob("*.py") if p.name != "__init__.py")
 
+
 def _read_makefile_optional() -> str | None:
     try:
         return MAKEFILE_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
+
 
 def _capture_cli_help_optional() -> str | None:
     # Best-effort: returns None on any problem
@@ -78,6 +85,7 @@ def _parse_pyproject_meta(text: str) -> ProjectMeta:
     desc = str(meta.get("description", "")).strip()
     return ProjectMeta(name=name, description=desc)
 
+
 def _format_installation(makefile_text: str | None) -> str:
     if makefile_text and "uv " in makefile_text:
         return (
@@ -90,18 +98,14 @@ def _format_installation(makefile_text: str | None) -> str:
             "uv run robofactor --help\n"
             "```"
         )
-    return (
-        "```bash\n"
-        "pip install .\n\n"
-        "# Run CLI\n"
-        "python -m robofactor.main --help\n"
-        "```"
-    )
+    return "```bash\npip install .\n\n# Run CLI\npython -m robofactor.main --help\n```"
+
 
 def _format_cli_usage(cli_help: str | None) -> str:
     if not cli_help:
         return "CLI is available via `robofactor --help`."
     return f"```text\n{cli_help.strip()}\n```"
+
 
 def _format_api_section(mods: Iterable[ModuleApi]) -> str:
     lines: list[str] = []
@@ -161,6 +165,7 @@ def _build_context() -> ProjectContext:
         modules=modules,
     )
 
+
 def _render_readme(ctx: ProjectContext) -> str:
     title = ctx.meta.name.strip() or "robofactor"
     description = ctx.meta.description.strip()
@@ -178,6 +183,7 @@ def _render_readme(ctx: ProjectContext) -> str:
         ),
     ]
     return _build_markdown(title, description, sections)
+
 
 def _build_markdown(title: str, description: str, sections: list[tuple[str, str]]) -> str:
     toc_lines = [f"- [{name}](#{name.lower().replace(' ', '-')})" for name, _ in sections]
@@ -198,6 +204,7 @@ app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 OUTPUT_OPTION = typer.Option(README_PATH, "--output", "-o", help="Output README path")
 DRY_RUN_OPTION = typer.Option(False, "--dry-run", help="Print to stdout instead of writing")
+
 
 @app.command()
 def main(
