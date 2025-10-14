@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # --- File Paths ---
-OPTIMIZER_FILENAME: Path = Path("optimized/")
+OPTIMIZER_PATH: Path = Path("optimized/")
 
 # --- DSPy Model Configuration ---
 DEFAULT_TASK_LLM: str = "gemini/gemini-flash-latest"
