@@ -307,9 +307,7 @@ def main(
     reflection_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS)
     dspy.configure(lm=task_llm)
 
-    refactorer = _load_or_compile_model(
-        config.OPTIMIZER_PATH, optimize, console, reflection_llm
-    )
+    refactorer = _load_or_compile_model(config.OPTIMIZER_PATH, optimize, console, reflection_llm)
 
     match (self_refactor, path):
         case (True, _):
