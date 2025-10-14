@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import importlib
 import importlib.util
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
 
 import typer
 from rich.console import Console
@@ -40,18 +38,12 @@ class ProjectContext:
     modules: tuple[ModuleApi, ...]
 
 
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _write_text(path: Path, content: str) -> None:
-    path.write_text(content, encoding="utf-8")
-
-
 def _list_source_modules(directory: Path) -> tuple[Path, ...]:
-    if not directory.exists():
-        return ()
-    return tuple(p for p in directory.glob("*.py") if p.name != "__init__.py")
+    return (
+        tuple(p for p in directory.glob("*.py") if p.name != "__init__.py")
+        if directory.exists()
+        else ()
+    )
 
 
 def _read_makefile_optional() -> str | None:
@@ -62,28 +54,27 @@ def _read_makefile_optional() -> str | None:
 
 
 def _capture_cli_help_optional() -> str | None:
-    # Best-effort: returns None on any problem
     try:
+        import importlib
+
         from typer.testing import CliRunner
 
-        module: ModuleType = importlib.import_module("robofactor.main")
-        app_obj = getattr(module, "app", None)
-        if not isinstance(app_obj, typer.Typer):
+        module = importlib.import_module("robofactor.main")
+        if not isinstance(app_obj := getattr(module, "app", None), typer.Typer):
             return None
 
-        runner = CliRunner()
-        result = runner.invoke(app_obj, ["--help"], catch_exceptions=False)
+        result = CliRunner().invoke(app_obj, ["--help"], catch_exceptions=False)
         return result.stdout if result.exit_code == 0 else None
     except Exception:
         return None
 
 
 def _parse_pyproject_meta(text: str) -> ProjectMeta:
-    data = tomllib.loads(text)
-    meta = data.get("project", {})
-    name = str(meta.get("name", "robofactor")).strip() or "robofactor"
-    desc = str(meta.get("description", "")).strip()
-    return ProjectMeta(name=name, description=desc)
+    meta = tomllib.loads(text).get("project", {})
+    return ProjectMeta(
+        name=str(meta.get("name", "robofactor")).strip() or "robofactor",
+        description=str(meta.get("description", "")).strip(),
+    )
 
 
 def _format_installation(makefile_text: str | None) -> str:
@@ -108,61 +99,70 @@ def _format_cli_usage(cli_help: str | None) -> str:
 
 
 def _format_api_section(mods: Iterable[ModuleApi]) -> str:
-    lines: list[str] = []
-    for mod in mods:
-        if not mod.signatures:
-            continue
-        lines.append(f"- {mod.module}")
-        lines.extend(f"  - `{sig}`" for sig in mod.signatures)
-    return "\n".join(lines) if lines else "(API signatures discovered automatically)."
+    from itertools import chain
+
+    lines = chain.from_iterable(
+        [f"- {mod.module}", *(f"  - `{sig}`" for sig in mod.signatures)]
+        for mod in mods
+        if mod.signatures
+    )
+    return "\n".join(lines) or "(API signatures discovered automatically)."
 
 
 def _analyze_modules(paths: Iterable[Path]) -> tuple[ModuleApi, ...]:
-    """Loads function_extraction dynamically and returns discovered API signatures."""
+    """
+    Analyze Python modules and extract API signatures.
+
+    Returns empty tuple if function_extraction module is not available.
+    This allows the README generation to continue gracefully.
+    """
     fe_path = SRC_DIR / "function_extraction.py"
+    if not fe_path.exists():
+        return ()
+
+    try:
+        return _load_and_extract_signatures(fe_path, paths)
+    except Exception:
+        return ()
+
+
+def _load_and_extract_signatures(fe_path: Path, paths: Iterable[Path]) -> tuple[ModuleApi, ...]:
     spec = importlib.util.spec_from_file_location("rf_function_extraction", fe_path)
     if spec is None or spec.loader is None:
-        raise ImportError("Cannot load function_extraction module")
+        return ()
+
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    parse_python_source = getattr(module, "parse_python_source", None)
-    format_function_signature = getattr(module, "format_function_signature", None)
-    if parse_python_source is None or format_function_signature is None:
-        raise AttributeError(
-            "robofactor.function_extraction must define parse_python_source and format_function_signature"
-        )
+    parse_fn = getattr(module, "parse_python_source", None)
+    format_fn = getattr(module, "format_function_signature", None)
+    if parse_fn is None or format_fn is None:
+        return ()
 
     from returns.result import Failure
 
     modules: list[ModuleApi] = []
     for path in paths:
-        text = _read_text(path)
-        parsed_result = parse_python_source(text, module_name=path.stem)
+        text = path.read_text(encoding="utf-8")
+        parsed_result = parse_fn(text, module_name=path.stem)
 
-        # Accept either a Result[...] or a plain value
         if isinstance(parsed_result, Failure):
-            raise parsed_result.failure()
+            continue
         funcs = parsed_result.unwrap() if hasattr(parsed_result, "unwrap") else parsed_result
-        signatures = tuple(format_function_signature(func) for func in funcs)
+        signatures = tuple(format_fn(func) for func in funcs)
         modules.append(ModuleApi(module=path.stem, signatures=signatures))
 
     return tuple(modules)
 
 
 def _build_context() -> ProjectContext:
-    py_text = _read_text(PYPROJECT_PATH)
-    meta = _parse_pyproject_meta(py_text)
-    makefile_text = _read_makefile_optional()
-    cli_help = _capture_cli_help_optional()
-    paths = _list_source_modules(SRC_DIR)
-    modules = _analyze_modules(paths)
+    py_text = PYPROJECT_PATH.read_text(encoding="utf-8")
     return ProjectContext(
-        meta=meta,
-        cli_help=cli_help,
+        meta=_parse_pyproject_meta(py_text),
+        cli_help=_capture_cli_help_optional(),
         pyproject_text=py_text,
-        makefile_text=makefile_text,
-        modules=modules,
+        makefile_text=_read_makefile_optional(),
+        modules=_analyze_modules(_list_source_modules(SRC_DIR)),
     )
 
 
@@ -177,8 +177,8 @@ def _render_readme(ctx: ProjectContext) -> str:
         (
             "Development",
             "- Lint: `uv run ruff check src tests`\n"
-            "- Format: `uv run ruff format src tests && uv run isort src tests`\n"
-            "- Type-check: `uv run mypy src`\n"
+            "- Format: `uv run ruff format src tests`\n"
+            "- Type-check: `uv run ty check`\n"
             "- Tests: `uv run pytest`\n",
         ),
     ]
@@ -186,18 +186,18 @@ def _render_readme(ctx: ProjectContext) -> str:
 
 
 def _build_markdown(title: str, description: str, sections: list[tuple[str, str]]) -> str:
-    toc_lines = [f"- [{name}](#{name.lower().replace(' ', '-')})" for name, _ in sections]
-    body_parts = [
-        f"# {title}",
-        "",
-        description,
-        "",
-        "## Contents",
-        *toc_lines,
-    ]
-    for name, content in sections:
-        body_parts.extend(("", f"## {name}", "", content))
-    return "\n".join(part for part in body_parts if part is not None)
+    from itertools import chain
+
+    toc_lines = (f"- [{name}](#{name.lower().replace(' ', '-')})" for name, _ in sections)
+    section_parts = chain.from_iterable(
+        ("", f"## {name}", "", content) for name, content in sections
+    )
+    parts = chain(
+        (f"# {title}", "", description, "", "## Contents"),
+        toc_lines,
+        section_parts,
+    )
+    return "\n".join(parts)
 
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -226,10 +226,9 @@ def main(
 
         if dry_run:
             console.print(content)
-            return
-
-        _write_text(output, content)
-        console.print(f"[green]README written to {output}[/green]")
+        else:
+            output.write_text(content, encoding="utf-8")
+            console.print(f"[green]README written to {output}[/green]")
     except Exception as exc:
         console.print(f"[red]Failed: {exc}[/red]")
         raise typer.Exit(code=1) from exc
