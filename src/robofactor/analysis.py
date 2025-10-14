@@ -1,10 +1,10 @@
 import ast
 import json
-import os
 import re
 import subprocess
 import tempfile
 import textwrap
+from itertools import filterfalse
 from pathlib import Path
 from typing import cast
 
@@ -103,8 +103,7 @@ def check_code_quality(code: PythonCode, func_name: str | None = None) -> Qualit
         return _compute_quality_scores(tmp_path, source, func_name)
     finally:
         # Ensure the temporary file is always cleaned up.
-        if tmp_path.exists():
-            os.unlink(tmp_path)
+        tmp_path.unlink(missing_ok=True)
 
 
 def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> QualityMetrics:
@@ -127,24 +126,24 @@ def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) ->
         cast(list[LintDiagnostic], json.loads(result.stdout)) if result.stdout else []
     )
 
-    def _fmt_issue(rec: LintDiagnostic) -> str:
+    def format_issue(rec: LintDiagnostic) -> str:
         filename = rec.get("filename", "")
-        location = rec.get("location")
-        row = location.get("row", 0) if location else 0
-        col = location.get("column", 0) if location else 0
+        location = rec.get("location") or {}
+        row = location.get("row", 0)
+        col = location.get("column", 0)
         code = rec.get("code", "")
         message = rec.get("message", "")
         return f"{filename}:{row}:{col} {code} {message}"
 
-    complexity_warnings = [
-        rec for rec in records if rec.get("code") == config.FLAKE8_COMPLEXITY_CODE
-    ]
-    complexity_issues = [_fmt_issue(rec) for rec in complexity_warnings]
-    linting_issues = [
-        _fmt_issue(rec) for rec in records if rec.get("code") != config.FLAKE8_COMPLEXITY_CODE
-    ]
+    def is_complexity(rec: LintDiagnostic) -> bool:
+        return rec.get("code") == config.FLAKE8_COMPLEXITY_CODE
 
-    complexity_score = 0.0 if complexity_warnings else 1.0
+    complexity_records = list(filter(is_complexity, records))
+    linting_records = list(filterfalse(is_complexity, records))
+    complexity_issues = list(map(format_issue, complexity_records))
+    linting_issues = list(map(format_issue, linting_records))
+
+    complexity_score = 0.0 if complexity_records else 1.0
     linting_score = max(0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues)))
 
     # A SyntaxError here will be caught by the @safe wrapper in the caller.
