@@ -178,18 +178,18 @@ def _to_test_case(
 ) -> models.TestCase:
     if isinstance(test_case, models.TestCase):
         return test_case
-    if not isinstance(test_case, Mapping):
-        # Must be _SupportsTestCase (structural protocol type)
+    if hasattr(test_case, "args") and hasattr(test_case, "kwargs"):
+        # Object-like interface (satisfies _SupportsTestCase protocol)
         return models.TestCase(
-            args=test_case.args,
-            kwargs=test_case.kwargs,
-            expected_output=test_case.expected_output,
+            args=test_case.args,  # type: ignore[union-attr]
+            kwargs=test_case.kwargs,  # type: ignore[union-attr]
+            expected_output=test_case.expected_output,  # type: ignore[union-attr]
         )
-    # Must be Mapping[str, Any]
+    # Mapping interface
     return models.TestCase(
-        args=test_case["args"],
-        kwargs=test_case["kwargs"],
-        expected_output=test_case["expected_output"],
+        args=test_case["args"],  # type: ignore[index]
+        kwargs=test_case["kwargs"],  # type: ignore[index]
+        expected_output=test_case["expected_output"],  # type: ignore[index]
     )
 
 
