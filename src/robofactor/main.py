@@ -1,17 +1,16 @@
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 import dspy
 import mlflow
 import typer
-from returns.result import Result
-
-if TYPE_CHECKING:
-    # Imported for type checking only; these names are referenced in annotations.
-    from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
-from returns.result import Failure, Success
+from dspy.teleprompt.gepa.gepa import GEPAFeedbackMetric
+from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
+from returns.result import Failure, Result, Success
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
@@ -22,8 +21,10 @@ from .analysis import extract_python_code
 from .data import examples, models
 from .evaluation import EvaluationResult, evaluate_refactored_code
 from .modules.code_refactor import CodeRefactor
+from .types import PythonCode, create_python_code
 
 app = typer.Typer()
+
 
 def _get_functional_score(eval_data: EvaluationResult) -> float:
     total_tests = eval_data.functional_check.total_tests
@@ -33,16 +34,16 @@ def _get_functional_score(eval_data: EvaluationResult) -> float:
 
 def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) -> float:
     """Calculates a reward score for a refactoring prediction."""
-    refactored_code = getattr(prediction, "refactored_code", "")
-    if not refactored_code:
+    artifact = getattr(prediction, "artifact", None)
+    if artifact is None:
         return 0.0
 
-    code_to_evaluate = extract_python_code(refactored_code)
-    if not code_to_evaluate:
+    refactored_code = extract_python_code(artifact.code)
+    if not refactored_code.code.strip():
         return 0.0
 
     test_cases = getattr(example, "test_cases", [])
-    eval_result = evaluate_refactored_code(code_to_evaluate, test_cases)
+    eval_result = evaluate_refactored_code(refactored_code, test_cases)
 
     if isinstance(eval_result, Failure):
         return 0.0
@@ -58,15 +59,13 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
     if isinstance(trainset_result, Failure):
         return 0.0
     train_set = trainset_result.unwrap()
-    code_snippet = inputs["code_snippet"]
+    code_snippet = extract_python_code(inputs["code_snippet"])
 
     # Find the example in the training set that matches the code snippet
     # This is inefficient but necessary given the reward_fn signature
     example = next((ex for ex in train_set if ex.code_snippet == code_snippet), None)
 
     if example is None:
-        import logging
-        import os
         logging.warning(f"No matching example found for code_snippet: {code_snippet!r}")
         if os.environ.get("ROBOFACTOR_DEV_MODE", "0") == "1":
             raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
@@ -74,7 +73,8 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
 
     return _calculate_reward_score(example, prediction)
 
-class _GEPARefactorMetric:
+
+class _GEPARefactorMetric(GEPAFeedbackMetric):
     """Metric callable compatible with DSPy's GEPAFeedbackMetric protocol.
 
     Accepts the full GEPA metric signature with optional predictor-level
@@ -93,6 +93,7 @@ class _GEPARefactorMetric:
     ) -> float | ScoreWithFeedback:
         # Leverage the same scoring logic used by `_reward_fn`.
         return _calculate_reward_score(gold, pred)
+
 
 def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
     """Configures warnings, MLflow, and returns a rich Console."""
@@ -159,26 +160,42 @@ def _render_original(console: Console, script_path: Path, source_code: str) -> N
     )
 
 
-def _build_tests(raw_tests: list[dict] | None) -> list[models.TestCase]:
-    return [models.TestCase(**tc) for tc in raw_tests] if raw_tests else []
+def _build_tests(
+    raw_tests: list[dict[str, Any]] | list[models.TestCase] | None,
+) -> list[models.TestCase]:
+    if not raw_tests:
+        return []
+    first = raw_tests[0]
+    if isinstance(first, models.TestCase):
+        return list(raw_tests)  # already structured
+    return [
+        models.TestCase(
+            args=tc["args"] if isinstance(tc, dict) else tc.args,
+            kwargs=tc["kwargs"] if isinstance(tc, dict) else tc.kwargs,
+            expected_output=tc["expected_output"] if isinstance(tc, dict) else tc.expected_output,
+        )
+        for tc in raw_tests
+    ]
 
 
-def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[str, str]:
-    """Extract code from prediction and validate it's non-empty.
-
-    Returns Success(code) or Failure(message).
-    """
-    raw = getattr(prediction, "refactored_code", None)
-    if not raw or not isinstance(raw, str):
+def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonCode, str]:
+    """Extract Python code from a prediction and validate it's non-empty."""
+    artifact = getattr(prediction, "artifact", None)
+    raw = artifact.code if artifact else None
+    if raw is None:
         return Failure("No refactored code produced by the model.")
     code = extract_python_code(raw)
-    if not code or not code.strip():
+    if not code.code.strip():
         return Failure("Extracted refactored code is empty.")
     return Success(code)
 
 
 def _evaluate_and_maybe_write(
-    console: Console, refactored_code: str, tests: list[models.TestCase], script_path: Path, write: bool
+    console: Console,
+    refactored_code: PythonCode,
+    tests: list[models.TestCase],
+    script_path: Path,
+    write: bool,
 ) -> None:
     evaluation = evaluate_refactored_code(refactored_code, tests)
     match evaluation:
@@ -188,7 +205,7 @@ def _evaluate_and_maybe_write(
                 console.print(
                     f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]"
                 )
-                script_path.write_text(refactored_code, encoding="utf-8")
+                script_path.write_text(refactored_code.code, encoding="utf-8")
                 console.print(f"[green]Refactoring of {script_path.name} complete.[/green]")
         case Failure(error_message):
             console.print(
@@ -212,9 +229,10 @@ def _run_refactoring_on_file(
     _render_original(console, script_path, source_code)
 
     # Build model example and run prediction
-    refactor_example = dspy.Example(code_snippet=source_code, test_cases=[]).with_inputs(
-        "code_snippet"
-    )
+    refactor_example = dspy.Example(
+        code_snippet=create_python_code(source_code),
+        test_cases=[],
+    ).with_inputs("code_snippet")
     prediction = refactorer(**refactor_example.inputs())
     ui.display_refactoring_process(console, prediction)
 
@@ -268,7 +286,7 @@ def main(
         "--prompt-llm",
         help="Model for generating prompts during optimization.",
     ),
-    tracing: bool = typer.Option(True, "--tracing/--no-tracing", help="Enable MLflow tracing."),
+    tracing: bool = typer.Option(False, "--tracing/--no-tracing", help="Enable MLflow tracing."),
     mlflow_uri: str = typer.Option(
         config.DEFAULT_MLFLOW_TRACKING_URI, "--mlflow-uri", help="MLflow tracking server URI."
     ),

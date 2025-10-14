@@ -6,7 +6,7 @@ from returns.result import Failure, Result, Success, safe
 
 from robofactor import analysis
 from robofactor.data import models
-from robofactor.types import CodeQualityScores
+from robofactor.types import PythonCode, QualityMetrics
 
 
 class FunctionalCheckResult(NamedTuple):
@@ -19,13 +19,13 @@ class FunctionalCheckResult(NamedTuple):
 class EvaluationResult(NamedTuple):
     """Holds all successful evaluation results for a piece of refactored code."""
 
-    code: str
+    code: PythonCode
     func_name: str
-    quality_scores: CodeQualityScores
+    quality_metrics: QualityMetrics
     functional_check: FunctionalCheckResult
 
 
-def _check_syntax(code: str) -> Result[str, str]:
+def _check_syntax(code: PythonCode) -> Result[str, str]:
     """
     Checks for valid Python syntax and returns the function name if valid.
 
@@ -40,7 +40,7 @@ def _check_syntax(code: str) -> Result[str, str]:
 
 
 @safe
-def _check_quality(code: str, func_name: str) -> CodeQualityScores:
+def _check_quality(code: PythonCode, func_name: str) -> Result[QualityMetrics, Exception]:
     """
     Checks code quality and returns the scores.
 
@@ -52,8 +52,8 @@ def _check_quality(code: str, func_name: str) -> CodeQualityScores:
 
 @safe
 def _check_functional_correctness(
-    code: str, func_name: str, tests: list[models.TestCase]
-) -> FunctionalCheckResult:
+    code: PythonCode, func_name: str, tests: list[models.TestCase]
+) -> Result[FunctionalCheckResult, Exception]:
     """
     Runs functional tests and returns the pass rate.
 
@@ -67,7 +67,7 @@ def _check_functional_correctness(
 
 
 def evaluate_refactored_code(
-    code: str, tests: list[models.TestCase]
+    code: PythonCode, tests: list[models.TestCase]
 ) -> Result[EvaluationResult, str]:
     """
     Performs a full evaluation of the refactored code.
@@ -90,13 +90,13 @@ def evaluate_refactored_code(
         lambda func_name: _check_quality(code, func_name)
         .alt(lambda e: f"Quality Check Failed: {e}")
         .bind(
-            lambda quality_scores: _check_functional_correctness(code, func_name, tests)
+            lambda quality_metrics: _check_functional_correctness(code, func_name, tests)
             .alt(lambda e: f"Functional Check Failed: {e}")
             .map(
                 lambda functional_check: EvaluationResult(
                     code=code,
                     func_name=func_name,
-                    quality_scores=quality_scores,
+                    quality_metrics=quality_metrics,
                     functional_check=functional_check,
                 )
             )

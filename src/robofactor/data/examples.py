@@ -3,6 +3,7 @@ from pathlib import Path
 import dspy
 from returns.result import Result
 
+from ..types import create_python_code
 from ..utils import load_json
 from ._internal.collectors import collect
 from ._internal.parsers import BasicParser, DictParser, ListParser
@@ -18,7 +19,9 @@ def _create_dspy_example_parser() -> DictParser[dspy.Example]:
         field_parsers={
             "args": BasicParser(type_check=lambda x: isinstance(x, list), type_name="list"),
             "kwargs": BasicParser(type_check=lambda x: isinstance(x, dict), type_name="dict"),
-            "expected_output": BasicParser(type_check=lambda x: True, type_name="any"),  # Any type allowed
+            "expected_output": BasicParser(
+                type_check=lambda x: True, type_name="any"
+            ),  # Any type allowed
         },
         constructor=TestCase,
     )
@@ -29,11 +32,14 @@ def _create_dspy_example_parser() -> DictParser[dspy.Example]:
     # Parser for the example dictionary
     return DictParser(
         field_parsers={
-            "code_snippet": BasicParser(type_check=lambda x: isinstance(x, str), type_name="string"),
+            "code_snippet": BasicParser(
+                type_check=lambda x: isinstance(x, str), type_name="string"
+            ),
             "test_cases": test_cases_parser,
         },
         constructor=lambda code_snippet, test_cases: dspy.Example(
-            code_snippet=code_snippet, test_cases=test_cases
+            code_snippet=create_python_code(code_snippet),
+            test_cases=test_cases,
         ).with_inputs("code_snippet"),
     )
 
