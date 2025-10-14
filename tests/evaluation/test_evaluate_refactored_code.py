@@ -2,11 +2,10 @@ from returns.result import Failure, Success
 
 from robofactor.data.models import TestCase
 from robofactor.evaluation import evaluate_refactored_code
-from robofactor.types import create_python_code
 
 
 def test_evaluate_refactored_code_success_with_passing_tests():
-    code = create_python_code(
+    code = (
         "def add(a: int, b: int) -> int:\n"
         '    """Return the sum of two integers."""\n'
         "    return a + b\n"
@@ -24,7 +23,7 @@ def test_evaluate_refactored_code_success_with_passing_tests():
 
 
 def test_evaluate_refactored_code_syntax_failure():
-    bad_code = create_python_code("x = 1")  # no top-level function
+    bad_code = "x = 1"  # no top-level function
     res = evaluate_refactored_code(bad_code, [])
     assert isinstance(res, Failure)
     assert "Syntax Check Failed" in res.failure()
