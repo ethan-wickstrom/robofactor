@@ -10,7 +10,7 @@ import dspy
 import mlflow
 import typer
 from dspy.teleprompt.gepa.gepa import GEPAFeedbackMetric
-from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
+from dspy.teleprompt.gepa.gepa_utils import DSPyTrace
 from returns.result import Failure, Result, Success
 from rich.console import Console
 from rich.panel import Panel
@@ -28,53 +28,45 @@ app = typer.Typer()
 
 def _get_functional_score(eval_data: EvaluationResult) -> float:
     """Calculate functional test pass rate, defaulting to 1.0 if no tests."""
-    fc = eval_data.functional_check
-    return fc.passed_tests / fc.total_tests if fc.total_tests > 0 else 1.0
+    return (
+        eval_data.functional_check.passed_tests / eval_data.functional_check.total_tests
+        if eval_data.functional_check.total_tests > 0
+        else 1.0
+    )
 
 
 def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) -> float:
     """Calculate reward score from functional test results."""
-    artifact = getattr(prediction, "artifact", None)
-    if not artifact or not artifact.code.code.strip():
+    if not (artifact := getattr(prediction, "artifact", None)) or not artifact.code.code.strip():
         logging.debug("Reward score 0.0: No artifact or empty code in prediction")
         return 0.0
 
-    test_cases = getattr(example, "test_cases", [])
-    eval_result = evaluate_refactored_code(artifact.code, test_cases)
+    eval_result = evaluate_refactored_code(artifact.code, getattr(example, "test_cases", []))
 
     match eval_result:
         case Success(eval_data):
             score = _get_functional_score(eval_data)
-            logging.debug(
-                f"Reward score {score}: {eval_data.functional_check.passed_tests}/"
-                f"{eval_data.functional_check.total_tests} tests passed"
-            )
+            fc = eval_data.functional_check
+            logging.debug(f"Reward score {score}: {fc.passed_tests}/{fc.total_tests} tests passed")
             return score
         case Failure(error_msg):
             logging.debug(f"Reward score 0.0: Evaluation failed - {error_msg}")
-            return 0.0
-        case _:
-            return 0.0
+    return 0.0
 
 
 def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
     """Adapter for reward function matching code snippets to training examples."""
     match examples.get_examples():
-        case Failure():
-            return 0.0
         case Success(train_set):
             code_snippet = inputs["code_snippet"]
-            example = next((ex for ex in train_set if ex.code_snippet == code_snippet), None)
-
-            if not example:
-                logging.warning(f"No matching example found for code_snippet: {code_snippet!r}")
-                if os.environ.get("ROBOFACTOR_DEV_MODE", "0") == "1":
-                    raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
-                return 0.0
-
-            return _calculate_reward_score(example, prediction)
-        case _:
-            return 0.0
+            if example := next((ex for ex in train_set if ex.code_snippet == code_snippet), None):
+                return _calculate_reward_score(example, prediction)
+            logging.warning(f"No matching example found for code_snippet: {code_snippet!r}")
+            if os.environ.get("ROBOFACTOR_DEV_MODE", "0") == "1":
+                raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
+        case Failure():
+            pass
+    return 0.0
 
 
 @runtime_checkable
@@ -94,7 +86,7 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
         trace: DSPyTrace | None = None,
         pred_name: str | None = None,
         pred_trace: DSPyTrace | None = None,
-    ) -> float | ScoreWithFeedback:
+    ) -> float:
         return _calculate_reward_score(gold, pred)
 
 
@@ -137,7 +129,7 @@ def _load_or_compile_model(
         num_threads=8,
         track_stats=True,
         track_best_outputs=True,
-        add_format_failure_as_feedback=True
+        add_format_failure_as_feedback=True,
     )
 
     match examples.get_examples():
@@ -172,34 +164,39 @@ def _to_test_case(
     test_case: models.TestCase | Mapping[str, Any] | _SupportsTestCase,
 ) -> models.TestCase:
     """Convert test case from various formats to TestCase model."""
-    match test_case:
-        case models.TestCase():
-            return test_case
-        case {"args": args, "kwargs": kwargs, "expected_output": expected}:
-            return models.TestCase(args=args, kwargs=kwargs, expected_output=expected)
-        case _SupportsTestCase(args=args, kwargs=kwargs, expected_output=expected):
-            return models.TestCase(args=args, kwargs=kwargs, expected_output=expected)
-        case _:
-            raise TypeError(f"Unsupported test case type: {type(test_case)!r}")
+    if isinstance(test_case, models.TestCase):
+        return test_case
+    if isinstance(test_case, Mapping):
+        return models.TestCase(
+            args=test_case["args"],
+            kwargs=test_case["kwargs"],
+            expected_output=test_case["expected_output"],
+        )
+    if isinstance(test_case, _SupportsTestCase):
+        return models.TestCase(
+            args=test_case.args,
+            kwargs=test_case.kwargs,
+            expected_output=test_case.expected_output,
+        )
+    raise TypeError(f"Unsupported test case type: {type(test_case)!r}")
 
 
 def _build_tests(
     raw_tests: Iterable[models.TestCase | Mapping[str, Any] | _SupportsTestCase] | None,
 ) -> list[models.TestCase]:
     """Convert test cases to list of TestCase models."""
-    return [] if raw_tests is None else list(map(_to_test_case, raw_tests))
+    return list(map(_to_test_case, raw_tests)) if raw_tests else []
 
 
 def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonCode, str]:
     """Extract and validate non-empty Python code from prediction."""
-    if artifact := getattr(prediction, "artifact", None):
-        return (
-            Success(artifact.code)
-            if artifact.code.code.strip()
-            else Failure("Extracted refactored code is empty.")
-        )
-    else:
+    if not (artifact := getattr(prediction, "artifact", None)):
         return Failure("No refactored code produced by the model.")
+    return (
+        Success(artifact.code)
+        if artifact.code.code.strip()
+        else Failure("Extracted refactored code is empty.")
+    )
 
 
 def _evaluate_and_maybe_write(

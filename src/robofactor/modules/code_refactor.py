@@ -7,6 +7,7 @@ from robofactor.signatures.final_evaluation import FinalEvaluation
 from robofactor.signatures.refactored_code import RefactoredCode
 from robofactor.signatures.refactoring_plan import RefactoringPlan
 from robofactor.types import (
+    CodeAnalysisReport,
     ComplexityReport,
     DocumentationReport,
     EvaluationRecommendation,
@@ -15,6 +16,8 @@ from robofactor.types import (
     QualityMetrics,
     QualityVerdict,
     RecommendationPriority,
+    RefactoredArtifact,
+    RefactoringPlanModel,
     TypingReport,
 )
 
@@ -31,9 +34,9 @@ def _compute_functional_score(refactored_code: PythonCode, test_cases: list[Test
 
 
 def _create_syntax_error_prediction(
-    analysis_report: object,
-    plan: object,
-    artifact: object,
+    analysis_report: CodeAnalysisReport,
+    plan: RefactoringPlanModel,
+    artifact: RefactoredArtifact,
     error_message: str,
 ) -> dspy.Prediction:
     """Create prediction for syntax-invalid code."""

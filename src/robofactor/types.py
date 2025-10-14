@@ -37,16 +37,12 @@ class OpportunityCategory(str, Enum):
             return None
 
         normalized = value.strip().replace("-", "_").replace(" ", "_").upper()
-        if member := next((m for m in cls if m.value == normalized), None):
-            return member
-
-        alias_map = {
+        return next((m for m in cls if m.value == normalized), None) or {
             "ERRORHANDLING": cls.ERROR_HANDLING,
             "ERRORHANDLNG": cls.ERROR_HANDLING,
             "ROBUST": cls.ROBUSTNESS,
             "MAINTAIN": cls.MAINTAINABILITY,
-        }
-        return alias_map.get(normalized)
+        }.get(normalized)
 
 
 class RefactoringOpportunity(BaseModel):
@@ -87,17 +83,13 @@ class PlanStepFocus(str, Enum):
             return None
 
         normalized = value.strip().replace("-", "_").replace(" ", "_").lower()
-        if member := next((m for m in cls if m.value == normalized), None):
-            return member
-
-        alias_map = {
+        return next((m for m in cls if m.value == normalized), None) or {
             "ROBUST": cls.ROBUSTNESS,
             "ERROR_HANDLING": cls.ROBUSTNESS,
             "ERRORHANDLING": cls.ROBUSTNESS,
             "MAINTAIN": cls.MAINTAINABILITY,
             "DOCS": cls.DOCUMENTATION,
-        }
-        return alias_map.get(normalized.upper())
+        }.get(normalized.upper())
 
 
 class PlanStep(BaseModel):
@@ -168,10 +160,11 @@ class RecommendationPriority(str, Enum):
     @classmethod
     def _missing_(cls, value: object) -> RecommendationPriority | None:
         """Handle priority normalization."""
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            return next((m for m in cls if m.value == normalized), None)
-        return None
+        return (
+            next((m for m in cls if m.value == value.strip().lower()), None)
+            if isinstance(value, str)
+            else None
+        )
 
 
 class EvaluationRecommendation(BaseModel):
