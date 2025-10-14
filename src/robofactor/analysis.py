@@ -6,37 +6,55 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
+from typing import cast
 
 import dspy
+from dspy.adapters.types.code import Code as DSPyCode
 
 from . import config
 from .data import models
-from .types import CodeQualityScores
+from .types import (
+    ComplexityReport,
+    DocumentationReport,
+    LintDiagnostic,
+    LintingReport,
+    PythonCode,
+    QualityMetrics,
+    TypingReport,
+    create_python_code,
+)
 
 
-def extract_python_code(text: str) -> str:
+def _to_python_code(value: PythonCode | str) -> PythonCode:
+    return value if isinstance(value, DSPyCode) else create_python_code(value)
+
+
+def extract_python_code(text: PythonCode | str) -> PythonCode:
     """Extract Python code from a fenced markdown block.
 
     - Supports optional leading indentation before fences.
     - Returns original text if no Python fence is found.
     """
+    if isinstance(text, DSPyCode):
+        return text
+
     pattern = re.compile(r"^[ \t]*```python\s*\n(.*?)\n[ \t]*```", re.DOTALL | re.MULTILINE)
     match = pattern.search(text)
-    return match[1].strip() if match else text
+    extracted = match[1].strip() if match else text
+    return _to_python_code(extracted)
 
 
-def check_syntax(code: str) -> tuple[bool, str | None, str | None]:
+def check_syntax(code: PythonCode) -> tuple[bool, str | None, str | None]:
     """
     Checks for valid Python syntax and a top-level function definition.
 
     Returns a tuple indicating validity, the function name, and an error message.
     This format is consumed by a wrapper that converts it into a `Result` monad.
     """
+    source = code.code
     try:
-        tree = ast.parse(code)
-        if func_node := next(
-            (n for n in tree.body if isinstance(n, ast.FunctionDef)), None
-        ):
+        tree = ast.parse(source)
+        if func_node := next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None):
             return True, func_node.name, None
         else:
             return False, None, "No top-level function definition found."
@@ -67,7 +85,7 @@ def _get_ast_based_scores(tree: ast.AST, func_name: str | None) -> tuple[float, 
     return docstring_score, typing_score
 
 
-def check_code_quality(code: str, func_name: str | None = None) -> CodeQualityScores:
+def check_code_quality(code: PythonCode, func_name: str | None = None) -> QualityMetrics:
     """
     Analyzes Python code for quality metrics using flake8 and AST.
 
@@ -75,39 +93,55 @@ def check_code_quality(code: str, func_name: str | None = None) -> CodeQualitySc
     subprocess. It is designed to be wrapped by a decorator like `@safe`
     or `@impure_safe` to handle potential exceptions.
     """
+    python_code = _to_python_code(code)
+    source = python_code.code
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
-        tmp.write(code)
+        tmp.write(source)
         tmp_path = Path(tmp.name)
 
     try:
-        return _compute_quality_scores(
-            tmp_path, code, func_name
-        )
+        return _compute_quality_scores(tmp_path, source, func_name)
     finally:
         # Ensure the temporary file is always cleaned up.
         if tmp_path.exists():
             os.unlink(tmp_path)
 
 
-def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> CodeQualityScores:
+def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) -> QualityMetrics:
     # Exceptions from subprocess.run will be caught by the @safe wrapper in the caller.
+    # Use Ruff for linting and complexity (C901) analysis, outputting JSON for parsing.
     result = subprocess.run(
         [
-            "flake8",
-            f"--max-complexity={config.FLAKE8_MAX_COMPLEXITY}",
+            "ruff",
+            "check",
+            "--output-format",
+            "json",
             str(tmp_path),
         ],
         capture_output=True,
         text=True,
-        check=False,  # We manually check output, not exit code.
+        check=False,
     )
-    all_issues = result.stdout.strip().splitlines() if result.stdout else []
+
+    records: list[LintDiagnostic] = (
+        cast(list[LintDiagnostic], json.loads(result.stdout)) if result.stdout else []
+    )
+
+    def _fmt_issue(rec: LintDiagnostic) -> str:
+        filename = rec.get("filename", "")
+        location = rec.get("location")
+        row = location.get("row", 0) if location else 0
+        col = location.get("column", 0) if location else 0
+        code = rec.get("code", "")
+        message = rec.get("message", "")
+        return f"{filename}:{row}:{col} {code} {message}"
 
     complexity_warnings = [
-        issue for issue in all_issues if config.FLAKE8_COMPLEXITY_CODE in issue
+        rec for rec in records if rec.get("code") == config.FLAKE8_COMPLEXITY_CODE
     ]
+    complexity_issues = [_fmt_issue(rec) for rec in complexity_warnings]
     linting_issues = [
-        issue for issue in all_issues if config.FLAKE8_COMPLEXITY_CODE not in issue
+        _fmt_issue(rec) for rec in records if rec.get("code") != config.FLAKE8_COMPLEXITY_CODE
     ]
 
     complexity_score = 0.0 if complexity_warnings else 1.0
@@ -117,12 +151,11 @@ def _compute_quality_scores(tmp_path: Path, code: str, func_name: str | None) ->
     tree = ast.parse(code)
     docstring_score, typing_score = _get_ast_based_scores(tree, func_name)
 
-    return CodeQualityScores(
-        linting_score=linting_score,
-        complexity_score=complexity_score,
-        typing_score=typing_score,
-        docstring_score=docstring_score,
-        linting_issues=linting_issues,
+    return QualityMetrics(
+        linting=LintingReport(score=linting_score, issues=linting_issues),
+        complexity=ComplexityReport(score=complexity_score, warnings=complexity_issues),
+        typing=TypingReport(score=typing_score),
+        documentation=DocumentationReport(score=docstring_score),
     )
 
 
@@ -148,7 +181,9 @@ def _build_execution_script(func_name: str, test_case: models.TestCase) -> str:
     )
 
 
-def check_functional_correctness(code: str, func_name: str, test_cases: list[models.TestCase]) -> int:
+def check_functional_correctness(
+    code: PythonCode, func_name: str, test_cases: list[models.TestCase]
+) -> int:
     """
     Executes test cases against code in a sandboxed Python interpreter.
 
@@ -160,10 +195,11 @@ def check_functional_correctness(code: str, func_name: str, test_cases: list[mod
     if not test_cases:
         return 0
 
+    source = code.code
     passed_count = 0
     # A failure in the interpreter setup will be caught by the @safe wrapper.
     with dspy.PythonInterpreter() as interp:
-        interp.execute(code)  # Define the function in the interpreter's scope.
+        interp.execute(source)  # Define the function in the interpreter's scope.
         for test in test_cases:
             # Handle failures for individual test cases gracefully to allow others to run.
             try:
