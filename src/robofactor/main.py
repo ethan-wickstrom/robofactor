@@ -135,6 +135,9 @@ def _load_or_compile_model(
         auto="light",
         reflection_lm=reflection_lm,
         num_threads=8,
+        track_stats=True,
+        track_best_outputs=True,
+        add_format_failure_as_feedback=True
     )
 
     match examples.get_examples():
