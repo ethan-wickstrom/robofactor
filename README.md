@@ -41,7 +41,7 @@ The core technologies driving Robofactor include:
 
 ## Installation
 
-Before you begin, ensure you have Python 3.10 or newer installed on your system. This project uses `uv` for fast and efficient dependency management.
+Before you begin, ensure you have Python 3.12 or newer installed on your system. This project uses `uv` for fast and efficient dependency management.
 
 ### Standard Installation
 

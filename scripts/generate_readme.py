@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 import typer
-from returns.result import Failure
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from typer.testing import CliRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src" / "robofactor"
@@ -56,11 +54,15 @@ def _read_makefile_optional() -> str | None:
 
 
 def _capture_cli_help_optional() -> str | None:
+    """
+    Attempt to import the CLI app and capture `--help` output without dynamic imports.
+    Falls back to None if the module or `app` is unavailable.
+    """
     try:
-        from typer.testing import CliRunner
+        # Static import (no importlib usage)
+        from robofactor.main import app as app_obj
 
-        module = importlib.import_module("robofactor.main")
-        if not isinstance(app_obj := getattr(module, "app", None), typer.Typer):
+        if not isinstance(app_obj, typer.Typer):
             return None
 
         result = CliRunner().invoke(app_obj, ["--help"], catch_exceptions=False)
@@ -98,59 +100,12 @@ def _format_cli_usage(cli_help: str | None) -> str:
     return f"```text\n{cli_help.strip()}\n```"
 
 
-def _format_api_section(mods: Iterable[ModuleApi]) -> str:
-    from itertools import chain
-
-    lines = chain.from_iterable(
-        [f"- {mod.module}", *(f"  - `{sig}`" for sig in mod.signatures)]
-        for mod in mods
-        if mod.signatures
-    )
-    return "\n".join(lines) or "(API signatures discovered automatically)."
-
-
-def _analyze_modules(paths: Iterable[Path]) -> tuple[ModuleApi, ...]:
+def _format_api_section(_mods: Iterable[ModuleApi]) -> str:
     """
-    Analyze Python modules and extract API signatures.
-
-    Returns empty tuple if function_extraction module is not available.
-    This allows the README generation to continue gracefully.
+    Keep README generation deterministic without dynamic imports. We intentionally
+    skip runtime module loading; API discovery can be added later with static analysis.
     """
-    fe_path = SRC_DIR / "function_extraction.py"
-    if not fe_path.exists():
-        return ()
-
-    try:
-        return _load_and_extract_signatures(fe_path, paths)
-    except Exception:
-        return ()
-
-
-def _load_and_extract_signatures(fe_path: Path, paths: Iterable[Path]) -> tuple[ModuleApi, ...]:
-    spec = importlib.util.spec_from_file_location("rf_function_extraction", fe_path)
-    if spec is None or spec.loader is None:
-        return ()
-
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    parse_fn = getattr(module, "parse_python_source", None)
-    format_fn = getattr(module, "format_function_signature", None)
-    if parse_fn is None or format_fn is None:
-        return ()
-
-    modules: list[ModuleApi] = []
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        parsed_result = parse_fn(text, module_name=path.stem)
-
-        if isinstance(parsed_result, Failure):
-            continue
-        funcs = parsed_result.unwrap() if hasattr(parsed_result, "unwrap") else parsed_result
-        signatures = tuple(format_fn(func) for func in funcs)
-        modules.append(ModuleApi(module=path.stem, signatures=signatures))
-
-    return tuple(modules)
+    return "(API signatures discovered automatically)."
 
 
 def _build_context() -> ProjectContext:
@@ -160,8 +115,23 @@ def _build_context() -> ProjectContext:
         cli_help=_capture_cli_help_optional(),
         pyproject_text=py_text,
         makefile_text=_read_makefile_optional(),
-        modules=_analyze_modules(_list_source_modules(SRC_DIR)),
+        modules=(),  # Purposely not loading modules dynamically
     )
+
+
+def _build_markdown(title: str, description: str, sections: list[tuple[str, str]]) -> str:
+    from itertools import chain
+
+    toc_lines = (f"- [{name}](#{name.lower().replace(' ', '-')})" for name, _ in sections)
+    section_parts = chain.from_iterable(
+        ("", f"## {name}", "", content) for name, content in sections
+    )
+    parts = chain(
+        (f"# {title}", "", description, "", "## Contents"),
+        toc_lines,
+        section_parts,
+    )
+    return "\n".join(parts)
 
 
 def _render_readme(ctx: ProjectContext) -> str:
@@ -181,21 +151,6 @@ def _render_readme(ctx: ProjectContext) -> str:
         ),
     ]
     return _build_markdown(title, description, sections)
-
-
-def _build_markdown(title: str, description: str, sections: list[tuple[str, str]]) -> str:
-    from itertools import chain
-
-    toc_lines = (f"- [{name}](#{name.lower().replace(' ', '-')})" for name, _ in sections)
-    section_parts = chain.from_iterable(
-        ("", f"## {name}", "", content) for name, content in sections
-    )
-    parts = chain(
-        (f"# {title}", "", description, "", "## Contents"),
-        toc_lines,
-        section_parts,
-    )
-    return "\n".join(parts)
 
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)

@@ -1,5 +1,5 @@
 [project]
-name = "Robofactor"
+name = "robofactor"
 version = "0.1.1"
 description = "The robot who refactors: /[^_^]\\"
 readme = "README.md"
@@ -41,9 +41,8 @@ packages = ["src/robofactor"]
 
 [dependency-groups]
 dev = [
-  "ruff>=0.11.13",
-  "pytest>=8.3.2",
-  "pytest-cov>=5.0.0",
+  "pytest>=8.4.2",
+  "pytest-cov>=7.0.0",
   "ty>=0.0.1a22",
 ]
 
@@ -101,4 +100,3 @@ exclude_lines = [
   "raise NotImplementedError",
   "if __name__ == .__main__.:",
 ]
-
