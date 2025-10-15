@@ -34,3 +34,4 @@ mlflow.db
 
 # Documentation builds
 site/
+.DS_Store
