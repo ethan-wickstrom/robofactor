@@ -1,23 +1,23 @@
-from __future__ import annotations
+"""Railway-oriented evaluation pipeline for refactored code."""
 
 from typing import NamedTuple
 
-from returns.result import Failure, Result, Success, safe
+from returns.result import Result, safe
 
-from robofactor import analysis
-from robofactor.data import models
-from robofactor.types import PythonCode, QualityMetrics
+from . import analysis
+from .data import models
+from .types import PythonCode, QualityMetrics
 
 
 class FunctionalCheckResult(NamedTuple):
-    """Encapsulates the result of functional correctness tests."""
+    """Result of functional correctness testing."""
 
     passed_tests: int
     total_tests: int
 
 
 class EvaluationResult(NamedTuple):
-    """Holds all successful evaluation results for a piece of refactored code."""
+    """Complete evaluation results for refactored code."""
 
     code: PythonCode
     func_name: str
@@ -25,80 +25,41 @@ class EvaluationResult(NamedTuple):
     functional_check: FunctionalCheckResult
 
 
-def _check_syntax(code: PythonCode) -> Result[str, str]:
-    """
-    Checks for valid Python syntax and returns the function name if valid.
-
-    This function wraps the analysis function to convert its tuple-based
-    output into a `Result` monad, which is more suitable for functional
-    pipelines.
-    """
-    is_valid, func_name, err = analysis.check_syntax(code)
-    if not is_valid or not func_name:
-        return Failure(f"Syntax Check Failed: {err or 'No function found.'}")
-    return Success(func_name)
-
-
-@safe
-def _check_quality(code: PythonCode, func_name: str) -> Result[QualityMetrics, Exception]:
-    """
-    Checks code quality and returns the scores.
-
-    The `@safe` decorator automatically wraps this function's execution in a
-    `Result` container, capturing any exceptions as a `Failure`.
-    """
-    return analysis.check_code_quality(code, func_name)
-
-
-@safe
-def _check_functional_correctness(
-    code: PythonCode, func_name: str, tests: list[models.TestCase]
-) -> Result[FunctionalCheckResult, Exception]:
-    """
-    Runs functional tests and returns the pass rate.
-
-    The `@safe` decorator captures any exceptions during test execution.
-    """
-    if not tests:
-        return FunctionalCheckResult(passed_tests=0, total_tests=0)
-
-    passed_tests = analysis.check_functional_correctness(code, func_name, tests)
-    return FunctionalCheckResult(passed_tests=passed_tests, total_tests=len(tests))
-
-
 def evaluate_refactored_code(
     code: PythonCode, tests: list[models.TestCase]
 ) -> Result[EvaluationResult, str]:
-    """
-    Performs a full evaluation of the refactored code.
+    """Evaluate refactored code through syntax, quality, and functional checks.
 
-    This function orchestrates a pipeline of checks (syntax, quality, functional)
-    using a declarative, railway-oriented approach with `returns`'s `.bind()`
-    method. If any step fails, the entire pipeline short-circuits and returns
-    the error.
-
-    Args:
-        code: The refactored Python code to evaluate.
-        tests: A list of test cases to verify functional correctness.
+    Uses railway-oriented programming: any step failure short-circuits the pipeline.
 
     Returns:
-        A `Result` container:
-        - `Success(EvaluationResult)` if all checks pass.
-        - `Failure(str)` with a descriptive error message if any check fails.
+        Success with EvaluationResult or Failure with error message.
     """
-    return _check_syntax(code).bind(
-        lambda func_name: _check_quality(code, func_name)
-        .alt(lambda e: f"Quality Check Failed: {e}")
+    return analysis.check_syntax(code).bind(
+        lambda func_name: safe(lambda: analysis.check_code_quality(code))()
+        .alt(lambda e: f"Quality check failed: {e}")
         .bind(
-            lambda quality_metrics: _check_functional_correctness(code, func_name, tests)
-            .alt(lambda e: f"Functional Check Failed: {e}")
+            lambda quality: safe(
+                lambda: analysis.check_functional_correctness(code, func_name, tests)
+            )()
+            .alt(lambda e: f"Functional check failed: {e}")
             .map(
-                lambda functional_check: EvaluationResult(
+                lambda passed: EvaluationResult(
                     code=code,
                     func_name=func_name,
-                    quality_metrics=quality_metrics,
-                    functional_check=functional_check,
+                    quality_metrics=quality,
+                    functional_check=FunctionalCheckResult(
+                        passed_tests=passed,
+                        total_tests=len(tests),
+                    ),
                 )
             )
         )
     )
+
+
+__all__ = [
+    "EvaluationResult",
+    "FunctionalCheckResult",
+    "evaluate_refactored_code",
+]
