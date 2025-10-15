@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Annotated, Any, Protocol, runtime_checkable
+from typing import Annotated, Any
 
 import dspy
 import mlflow
@@ -67,13 +66,6 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
         case Failure():
             pass
     return 0.0
-
-
-@runtime_checkable
-class _SupportsTestCase(Protocol):
-    args: list[Any]
-    kwargs: dict[str, Any]
-    expected_output: Any
 
 
 class _GEPARefactorMetric(GEPAFeedbackMetric):
@@ -160,34 +152,6 @@ def _render_original(console: Console, script_path: Path, source_code: str) -> N
     )
 
 
-def _to_test_case(
-    test_case: models.TestCase | Mapping[str, Any] | _SupportsTestCase,
-) -> models.TestCase:
-    """Convert test case from various formats to TestCase model."""
-    if isinstance(test_case, models.TestCase):
-        return test_case
-    if isinstance(test_case, Mapping):
-        return models.TestCase(
-            args=test_case["args"],
-            kwargs=test_case["kwargs"],
-            expected_output=test_case["expected_output"],
-        )
-    if isinstance(test_case, _SupportsTestCase):
-        return models.TestCase(
-            args=test_case.args,
-            kwargs=test_case.kwargs,
-            expected_output=test_case.expected_output,
-        )
-    raise TypeError(f"Unsupported test case type: {type(test_case)!r}")
-
-
-def _build_tests(
-    raw_tests: Iterable[models.TestCase | Mapping[str, Any] | _SupportsTestCase] | None,
-) -> list[models.TestCase]:
-    """Convert test cases to list of TestCase models."""
-    return list(map(_to_test_case, raw_tests)) if raw_tests else []
-
-
 def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonCode, str]:
     """Extract and validate non-empty Python code from prediction."""
     if not (artifact := getattr(prediction, "artifact", None)):
@@ -247,8 +211,7 @@ def _run_refactoring_on_file(
 
     match _safe_extract_refactored_code(prediction):
         case Success(refactored_code):
-            tests = _build_tests(refactor_example.get("test_cases", []))
-            _evaluate_and_maybe_write(console, refactored_code, tests, script_path, write)
+            _evaluate_and_maybe_write(console, refactored_code, [], script_path, write)
         case Failure(msg):
             console.print(
                 Panel(
