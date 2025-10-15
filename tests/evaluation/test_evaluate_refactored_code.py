@@ -26,4 +26,4 @@ def test_evaluate_refactored_code_syntax_failure():
     bad_code = "x = 1"  # no top-level function
     res = evaluate_refactored_code(bad_code, [])
     assert isinstance(res, Failure)
-    assert "Syntax Check Failed" in res.failure()
+    assert "top-level function" in res.failure()
