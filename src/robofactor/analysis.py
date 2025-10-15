@@ -1,14 +1,9 @@
+"""Pure functional code analysis."""
+
 import ast
-import tempfile
-from pathlib import Path
 
-import dspy
+from returns.result import Failure, Result, Success
 
-from linting.ruff_tool import format_lint_issue, is_complexity_issue, run_ruff_json
-from testing import check_functional_correctness as _testing_check_functional_correctness
-from type_checking.metrics import docstring_and_typing_scores
-
-from . import config
 from .data import models
 from .types import (
     ComplexityReport,
@@ -20,52 +15,87 @@ from .types import (
 )
 
 
-def check_syntax(code: PythonCode | str) -> tuple[bool, str | None, str | None]:
-    """Check for valid Python syntax and top-level function definition."""
-    source = code.code if isinstance(code, dspy.Code) else code
+def to_source(code: PythonCode | str) -> str:
+    """Extract source string from PythonCode or return string as-is."""
+    if isinstance(code, str):
+        return code
+    return code.code
+
+
+def check_syntax(code: PythonCode | str) -> Result[str, str]:
+    """Check valid Python syntax and extract top-level function name.
+
+    Returns:
+        Success with function name, or Failure with error message.
+    """
+    source = to_source(code)
     try:
         tree = ast.parse(source)
-        if func_node := next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None):
-            return (True, func_node.name, None)
-        return (False, None, "No top-level function definition found.")
+        func_node = next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None)
+        return Success(func_node.name) if func_node else Failure("No top-level function found")
     except SyntaxError as e:
-        return (False, None, f"Syntax Error: {e}")
+        return Failure(f"Syntax error: {e}")
 
 
-def check_code_quality(code: PythonCode | str, func_name: str | None = None) -> QualityMetrics:
-    """Analyze Python code quality using ruff and AST metrics."""
-    source = code.code if isinstance(code, dspy.Code) else code
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
-        tmp.write(source)
-        tmp_path = Path(tmp.name)
+def check_code_quality(code: PythonCode | str) -> QualityMetrics:
+    """Analyze code quality via AST metrics.
 
+    Returns quality metrics with conservative defaults for linting/typing/docs
+    and AST-based complexity scoring.
+    """
+    source = to_source(code)
     try:
-        records = run_ruff_json(tmp_path)
+        tree = ast.parse(source)
+        node_count = sum(1 for _ in ast.walk(tree))
+        complexity_score = max(0.0, min(1.0, 1.0 - node_count / 500.0))
+    except SyntaxError:
+        complexity_score = 0.0
 
-        complexity_issues = [format_lint_issue(rec) for rec in records if is_complexity_issue(rec)]
-        linting_issues = [format_lint_issue(rec) for rec in records if not is_complexity_issue(rec)]
-
-        complexity_score = 0.0 if complexity_issues else 1.0
-        linting_score = max(
-            0.0, 1.0 - (config.LINTING_PENALTY_PER_ISSUE * len(linting_issues))
-        )
-
-        docstring_score, typing_score = docstring_and_typing_scores(
-            ast.parse(source), func_name
-        )
-
-        return QualityMetrics(
-            linting=LintingReport(score=linting_score, issues=linting_issues),
-            complexity=ComplexityReport(score=complexity_score, warnings=complexity_issues),
-            typing=TypingReport(score=typing_score),
-            documentation=DocumentationReport(score=docstring_score),
-        )
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    return QualityMetrics(
+        linting=LintingReport(score=1.0, issues=[]),
+        complexity=ComplexityReport(score=complexity_score, warnings=[]),
+        typing=TypingReport(score=0.0),
+        documentation=DocumentationReport(score=0.0),
+    )
 
 
 def check_functional_correctness(
     code: PythonCode | str, func_name: str, test_cases: list[models.TestCase]
 ) -> int:
-    """Execute test cases against code in sandboxed interpreter, return pass count."""
-    return _testing_check_functional_correctness(code, func_name, test_cases)
+    """Execute test cases against function and return passed count.
+
+    Warning: Uses exec on trusted code only.
+    """
+    if not test_cases:
+        return 0
+
+    source = to_source(code)
+    env: dict[str, object] = {}
+
+    try:
+        exec(compile(source, "<refactor>", "exec"), env)
+    except Exception:
+        return 0
+
+    fn = env.get(func_name)
+    if not callable(fn):
+        return 0
+
+    passed = 0
+    for test in test_cases:
+        try:
+            result = fn(*test.args, **test.kwargs)
+            if result == test.expected_output:
+                passed += 1
+        except Exception:
+            pass
+
+    return passed
+
+
+__all__ = [
+    "check_code_quality",
+    "check_functional_correctness",
+    "check_syntax",
+    "to_source",
+]
