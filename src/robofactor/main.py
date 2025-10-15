@@ -69,17 +69,227 @@ def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
 
 
 class _GEPARefactorMetric(GEPAFeedbackMetric):
-    """GEPA metric using functional correctness scoring."""
+    """GEPA metric with rich textual feedback for reflection-driven optimization."""
 
-    def __call__(
+    def _analyze_trace_for_module_feedback(  # noqa: C901
+        self, pred_trace: DSPyTrace, pred_name: str | None
+    ) -> str:
+        """Extract module-specific insights from execution trace."""
+        if not pred_trace or not pred_name:
+            return ""
+
+        feedback_parts = []
+
+        # Analyze CodeAnalysis module
+        if pred_name == "analyzer" or "analyzer" in str(pred_trace):
+            if analysis_report := getattr(pred_trace, "report", None):
+                if hasattr(analysis_report, "opportunities") and not analysis_report.opportunities:
+                    feedback_parts.append(
+                        "MODULE ISSUE: CodeAnalysis found no refactoring opportunities. "
+                        "Instruction should emphasize identifying code smells, complexity, and improvement areas."
+                    )
+                if (
+                    hasattr(analysis_report, "complexity")
+                    and "complex" not in str(analysis_report.complexity).lower()
+                ):
+                    feedback_parts.append(
+                        "MODULE HINT: CodeAnalysis may be underreporting complexity. "
+                        "Look for nested loops, long functions, high cyclomatic complexity."
+                    )
+
+        # Analyze RefactoringPlan module
+        if pred_name == "planner" or "planner" in str(pred_trace):
+            if plan := getattr(pred_trace, "plan", None):
+                if hasattr(plan, "steps") and len(plan.steps) == 0:
+                    feedback_parts.append(
+                        "MODULE ISSUE: RefactoringPlan generated no concrete steps. "
+                        "Instruction should require actionable, ordered refactoring actions."
+                    )
+                # Check for constraint violations in plan description
+                if hasattr(plan, "objective"):
+                    objective_lower = str(plan.objective).lower()
+                    if "class" in objective_lower and "add" in objective_lower:
+                        feedback_parts.append(
+                            "MODULE WARNING: RefactoringPlan may be suggesting adding classes. "
+                            "CONSTRAINT: NO NEW CLASSES unless they exist in original. "
+                            "Instruction must emphasize preserving structure."
+                        )
+                    if "restructure" in objective_lower or "reorganize" in objective_lower:
+                        feedback_parts.append(
+                            "MODULE WARNING: RefactoringPlan suggests major restructuring. "
+                            "CONSTRAINT: KEEP STRUCTURE - functions stay functions. "
+                            "Focus on incremental improvements: types, docstrings, readability."
+                        )
+
+        # Analyze RefactoredCode module (implementer)
+        if pred_name == "implementer" or "implementer" in str(pred_trace):
+            feedback_parts.append(
+                "MODULE CONTEXT: RefactoredCode is the final generator. "
+                "If syntax errors occur here, instruction must stress SYNTACTICALLY VALID constraint. "
+                "Common issues: missing colons, bad indentation, incomplete refactoring."
+            )
+
+        return "\n".join(feedback_parts) if feedback_parts else ""
+
+    def __call__(  # noqa: C901
         self,
         gold: dspy.Example,
         pred: dspy.Prediction,
         trace: DSPyTrace | None = None,
         pred_name: str | None = None,
         pred_trace: DSPyTrace | None = None,
-    ) -> float:
-        return _calculate_reward_score(gold, pred)
+    ) -> dspy.Prediction:
+        """Return score with detailed feedback on pipeline stage failures."""
+        # Analyze trace for module-specific insights
+        trace_feedback = self._analyze_trace_for_module_feedback(pred_trace, pred_name)
+
+        # Extract artifact
+        if not (artifact := getattr(pred, "artifact", None)):
+            base_feedback = (
+                f"STAGE: {'RefactoredCode' if pred_name else 'Unknown'}\n"
+                "FAILURE: No artifact produced - module failed to generate refactored code.\n"
+                "ACTION: Ensure RefactoredCode signature returns RefactoredArtifact with code field."
+            )
+            return dspy.Prediction(
+                score=0.0,
+                feedback=f"{base_feedback}\n\n{trace_feedback}"
+                if trace_feedback
+                else base_feedback,
+            )
+
+        if not artifact.code.code.strip():
+            base_feedback = (
+                f"STAGE: {'RefactoredCode' if pred_name else 'Unknown'}\n"
+                "FAILURE: Empty code artifact generated.\n"
+                "ACTION: Refactored code must be non-empty. Check if model is generating placeholder text."
+            )
+            return dspy.Prediction(
+                score=0.0,
+                feedback=f"{base_feedback}\n\n{trace_feedback}"
+                if trace_feedback
+                else base_feedback,
+            )
+
+        refactored_code = artifact.code
+        test_cases = getattr(gold, "test_cases", [])
+
+        # Stage 1: Syntax validation
+        from . import analysis
+
+        syntax_result = analysis.check_syntax(refactored_code)
+        match syntax_result:
+            case Failure(error_msg):
+                base_feedback = (
+                    f"STAGE: RefactoredCode (syntax validation)\n"
+                    f"FAILURE: {error_msg}\n"
+                    "ACTION: Ensure generated code is valid Python. "
+                    "Check for: missing colons, indentation errors, unclosed brackets, invalid keywords.\n"
+                    f"CONSTRAINTS VIOLATED: SYNTACTICALLY VALID requirement from RefactoredCode signature."
+                )
+                return dspy.Prediction(
+                    score=0.0,
+                    feedback=f"{base_feedback}\n\n{trace_feedback}"
+                    if trace_feedback
+                    else base_feedback,
+                )
+            case Success(_):
+                pass
+
+        # Stage 2: Functional correctness
+        eval_result = evaluate_refactored_code(refactored_code, test_cases)
+        match eval_result:
+            case Success(eval_data):
+                fc = eval_data.functional_check
+                passed = fc.passed_tests
+                total = fc.total_tests
+                functional_score = passed / total if total > 0 else 1.0
+
+                # Calculate quality component scores
+                qm = eval_data.quality_metrics
+                linting_score = qm.linting.score
+                complexity_score = qm.complexity.score
+                typing_score = qm.typing.score
+                documentation_score = qm.documentation.score
+
+                # Aggregate quality score (equal weights)
+                quality_score = (
+                    linting_score + complexity_score + typing_score + documentation_score
+                ) / 4.0
+
+                # Multi-objective weighted score: 70% functional, 30% quality
+                # Functional correctness is critical (must preserve behavior)
+                # Quality improvements are secondary but important for refactoring
+                weighted_score = (0.7 * functional_score) + (0.3 * quality_score)
+
+                # Build detailed feedback with multi-objective decomposition
+                feedback_parts = [
+                    "STAGE: Full Pipeline (multi-objective evaluation)",
+                    f"OBJECTIVES: Functional={functional_score:.2f} (70%), Quality={quality_score:.2f} (30%)",
+                    f"WEIGHTED SCORE: {weighted_score:.2f}",
+                    "",
+                    "BREAKDOWN:",
+                    f"  - Functional Correctness: {functional_score:.2f} ({passed}/{total} tests passed)"
+                    if total > 0
+                    else f"  - Functional Correctness: {functional_score:.2f} (no tests)",
+                    f"  - Linting Quality: {linting_score:.2f}",
+                    f"  - Complexity: {complexity_score:.2f}",
+                    f"  - Type Hints: {typing_score:.2f}",
+                    f"  - Documentation: {documentation_score:.2f}",
+                ]
+
+                # Success/failure analysis
+                if functional_score == 1.0:
+                    feedback_parts.append(
+                        f"\nFUNCTIONAL: ✓ All {total} test(s) passed"
+                        if total > 0
+                        else "\nFUNCTIONAL: ✓ No tests to run"
+                    )
+                else:
+                    feedback_parts.append(
+                        f"\nFUNCTIONAL: ✗ {total - passed}/{total} test(s) failed - behavior diverges"
+                    )
+                    feedback_parts.append(
+                        "ACTION: Ensure PRESERVE ALL FUNCTIONALITY constraint. "
+                        "Check if refactoring changed logic, return values, or edge case handling."
+                    )
+
+                # Quality issues
+                if linting_score < 1.0 and qm.linting.issues:
+                    feedback_parts.append(
+                        f"LINTING: ✗ Issues found: {', '.join(qm.linting.issues[:3])}"
+                    )
+                elif linting_score == 1.0:
+                    feedback_parts.append("LINTING: ✓ No issues")
+
+                if complexity_score < 0.8:
+                    feedback_parts.append(
+                        f"COMPLEXITY: ⚠ Score {complexity_score:.2f} indicates high complexity"
+                    )
+                elif complexity_score >= 0.8:
+                    feedback_parts.append(
+                        f"COMPLEXITY: ✓ Acceptable (score {complexity_score:.2f})"
+                    )
+
+                # Append trace-based module feedback if available
+                if trace_feedback:
+                    feedback_parts.append(f"\n{trace_feedback}")
+
+                return dspy.Prediction(score=weighted_score, feedback="\n".join(feedback_parts))
+
+            case Failure(error_msg):
+                return dspy.Prediction(
+                    score=0.0,
+                    feedback=(
+                        f"STAGE: Evaluation Pipeline\n"
+                        f"FAILURE: {error_msg}\n"
+                        "ACTION: Code may have runtime errors or evaluation infrastructure failed."
+                    ),
+                )
+            case _:
+                return dspy.Prediction(
+                    score=0.0,
+                    feedback="STAGE: Unknown\nFAILURE: Unexpected evaluation result type.",
+                )
 
 
 def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
