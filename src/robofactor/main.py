@@ -493,8 +493,8 @@ def main(
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""
     console = _setup_environment(tracing, mlflow_uri, mlflow_experiment)
 
-    task_llm = dspy.LM(task_llm_model, max_tokens=config.TASK_LLM_MAX_TOKENS)
-    reflection_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS)
+    task_llm = dspy.LM(task_llm_model, max_tokens=config.TASK_LLM_MAX_TOKENS, temperature=1.0)
+    reflection_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS, temperature=1.0)
     dspy.configure(lm=task_llm)
 
     refactorer = _load_or_compile_model(config.OPTIMIZER_PATH, optimize, console, reflection_llm)

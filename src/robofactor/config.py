@@ -5,7 +5,7 @@ OPTIMIZER_PATH: Path = Path("optimized/")
 
 # --- DSPy Model Configuration ---
 DEFAULT_TASK_LLM: str = "gemini/gemini-flash-latest"
-DEFAULT_PROMPT_LLM: str = "gemini/gemini-2.5-pro"
+DEFAULT_PROMPT_LLM: str = "openai/gpt-5"
 TASK_LLM_MAX_TOKENS: int = 64000
 PROMPT_LLM_MAX_TOKENS: int = 64000
 
