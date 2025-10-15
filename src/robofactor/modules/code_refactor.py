@@ -1,4 +1,5 @@
 import dspy
+from returns.result import Failure, Success
 
 from robofactor import analysis
 from robofactor.data.models import TestCase
@@ -26,11 +27,13 @@ def _compute_functional_score(refactored_code: PythonCode, test_cases: list[Test
     """Compute test pass rate for refactored code."""
     if not test_cases:
         return 0.0
-    is_valid, func_name, _ = analysis.check_syntax(refactored_code)
-    if not is_valid or not func_name:
-        return 0.0
-    passed = analysis.check_functional_correctness(refactored_code, func_name, test_cases)
-    return passed / len(test_cases)
+
+    match analysis.check_syntax(refactored_code):
+        case Success(func_name):
+            passed = analysis.check_functional_correctness(refactored_code, func_name, test_cases)
+            return passed / len(test_cases)
+        case _:
+            return 0.0
 
 
 def _create_syntax_error_prediction(
@@ -82,11 +85,13 @@ class CodeRefactor(dspy.Module):
         impl_result = self.implementer(original_code=code_snippet, plan=plan_result.plan)
 
         # Validate syntax early to prevent downstream errors
-        is_valid, _, error_msg = analysis.check_syntax(impl_result.artifact.code)
-        if not is_valid:
-            return _create_syntax_error_prediction(
-                analysis_result.report, plan_result.plan, impl_result.artifact, error_msg or ""
-            )
+        match analysis.check_syntax(impl_result.artifact.code):
+            case Failure(error_msg):
+                return _create_syntax_error_prediction(
+                    analysis_result.report, plan_result.plan, impl_result.artifact, error_msg
+                )
+            case _:
+                pass
 
         quality_metrics = analysis.check_code_quality(impl_result.artifact.code)
         functional_score = _compute_functional_score(impl_result.artifact.code, test_cases or [])
