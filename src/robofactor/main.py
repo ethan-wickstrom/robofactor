@@ -169,11 +169,15 @@ def _evaluate_and_maybe_write(
     tests: list[models.TestCase],
     script_path: Path,
     write: bool,
+    verbose: bool = False,
 ) -> None:
     """Evaluate refactored code and optionally write to file if successful."""
-    match evaluate_refactored_code(refactored_code, tests):
+    with console.status("[bold cyan]Evaluating code quality...[/]"):
+        result = evaluate_refactored_code(refactored_code, tests)
+
+    match result:
         case Success(eval_data):
-            ui.display_evaluation_results(console, eval_data)
+            ui.display_evaluation_results(console, eval_data, verbose=verbose)
             if write:
                 console.print(
                     f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]"
@@ -194,7 +198,12 @@ def _evaluate_and_maybe_write(
 
 
 def _run_refactoring_on_file(
-    console: Console, refactorer: dspy.Module, script_path: Path, write: bool
+    console: Console,
+    refactorer: dspy.Module,
+    script_path: Path,
+    write: bool,
+    show_diff: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Execute refactoring workflow: read, refactor, evaluate, and optionally write."""
     console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
@@ -206,12 +215,16 @@ def _run_refactoring_on_file(
         test_cases=[],
     ).with_inputs("code_snippet")
 
-    prediction = refactorer(**refactor_example.inputs())
-    ui.display_refactoring_process(console, prediction)
+    with console.status("[bold cyan]Refactoring code...[/]"):
+        prediction = refactorer(**refactor_example.inputs())
+
+    ui.display_refactoring_process(
+        console, prediction, original_code=source_code, show_diff=show_diff
+    )
 
     match _safe_extract_refactored_code(prediction):
         case Success(refactored_code):
-            _evaluate_and_maybe_write(console, refactored_code, [], script_path, write)
+            _evaluate_and_maybe_write(console, refactored_code, [], script_path, write, verbose)
         case Failure(msg):
             console.print(
                 Panel(
@@ -262,6 +275,10 @@ def main(
     mlflow_experiment: str = typer.Option(
         config.DEFAULT_MLFLOW_EXPERIMENT_NAME, "--mlflow-experiment", help="MLflow experiment name."
     ),
+    show_diff: bool = typer.Option(False, "--show-diff", help="Display unified diff of changes."),
+    verbose: bool = typer.Option(
+        False, "--verbose", help="Show full details (all issues, warnings, etc.)."
+    ),
 ) -> None:
     """A DSPy-powered tool to analyze, plan, and refactor Python code."""
     console = _setup_environment(tracing, mlflow_uri, mlflow_experiment)
@@ -275,9 +292,9 @@ def main(
     match (self_refactor, path):
         case (True, _):
             console.print(Rule("[bold magenta]Self-Refactoring Mode[/bold magenta]"))
-            _run_refactoring_on_file(console, refactorer, Path(__file__), write)
+            _run_refactoring_on_file(console, refactorer, Path(__file__), write, show_diff, verbose)
         case (False, Path() as p) if p.is_file() and p.suffix == ".py":
-            _run_refactoring_on_file(console, refactorer, p, write)
+            _run_refactoring_on_file(console, refactorer, p, write, show_diff, verbose)
         case (False, Path() as p):
             console.print(f"[red]Provided path '{p}' is not a Python (.py) file.[/red]")
         case _:

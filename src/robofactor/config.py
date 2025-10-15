@@ -20,6 +20,15 @@ LINTING_PENALTY_PER_ISSUE: float = 0.1
 
 # --- UI Configuration ---
 RICH_SYNTAX_THEME: str = "monokai"
+UI_COLORS: dict[str, str] = {
+    "section": "cyan",
+    "success": "green",
+    "warning": "yellow",
+    "error": "red",
+    "accent": "magenta",
+    "info": "blue",
+}
+UI_TRUNCATE_LIMIT: int = 20
 
 # --- MLflow Configuration ---
 DEFAULT_MLFLOW_TRACKING_URI: str = "http://127.0.0.1:5000"
