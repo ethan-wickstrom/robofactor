@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Literal
 
 import dspy
 from pydantic import BaseModel, Field
@@ -185,26 +185,12 @@ class QualityVerdict(BaseModel):
     risks: list[str] = Field(default_factory=list)
 
 
-class LintLocation(TypedDict, total=False):
-    row: int
-    column: int
-
-
-class LintDiagnostic(TypedDict, total=False):
-    filename: str
-    location: NotRequired[LintLocation]
-    code: str
-    message: str
-
-
 __all__ = [
     "CodeAnalysisReport",
     "ComplexityReport",
     "DocumentationReport",
     "EvaluationRecommendation",
     "Json",
-    "LintDiagnostic",
-    "LintLocation",
     "LintingReport",
     "OpportunityCategory",
     "PlanStep",
