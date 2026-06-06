@@ -1,10 +1,21 @@
+from typing import TypeIs
+
 from returns.result import Failure, Success
 
 from robofactor.data._internal.parsers import BasicParser, DictParser, ListParser
+from robofactor.json_value import Json
+
+
+def _is_int(value: Json) -> TypeIs[int]:
+    return isinstance(value, int)
+
+
+def _is_string(value: Json) -> TypeIs[str]:
+    return isinstance(value, str)
 
 
 def test_basic_parser_success_and_failure() -> None:
-    is_int = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
+    is_int = BasicParser[int](type_check=_is_int, type_name="int")
     ok = is_int.parse(3)
     err = is_int.parse("nope")
 
@@ -16,7 +27,7 @@ def test_basic_parser_success_and_failure() -> None:
 
 
 def test_list_parser_success_and_element_error() -> None:
-    is_int = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
+    is_int = BasicParser[int](type_check=_is_int, type_name="int")
     list_parser = ListParser(is_int)
 
     ok = list_parser.parse([1, 2, 3])
@@ -35,8 +46,8 @@ def test_list_parser_success_and_element_error() -> None:
 
 
 def test_dict_parser_success_and_missing_field() -> None:
-    a_parser = BasicParser[int](type_check=lambda x: isinstance(x, int), type_name="int")
-    b_parser = BasicParser[str](type_check=lambda x: isinstance(x, str), type_name="string")
+    a_parser = BasicParser[int](type_check=_is_int, type_name="int")
+    b_parser = BasicParser[str](type_check=_is_string, type_name="string")
 
     parser = DictParser(
         field_parsers={"a": a_parser, "b": b_parser},
@@ -51,3 +62,17 @@ def test_dict_parser_success_and_missing_field() -> None:
     assert isinstance(missing, Failure)
     assert "Missing required field: b" in missing.failure()
 
+
+def test_dict_parser_reports_explicit_null_as_present_invalid_value() -> None:
+    parser = DictParser(
+        field_parsers={"value": BasicParser[str](type_check=_is_string, type_name="string")},
+        constructor=lambda value: value,
+    )
+
+    explicit_null = parser.parse({"value": None})
+    assert isinstance(explicit_null, Failure)
+    assert "Expected string, got NoneType" in explicit_null.failure()
+
+    missing = parser.parse({})
+    assert isinstance(missing, Failure)
+    assert "Missing required field: value" in missing.failure()

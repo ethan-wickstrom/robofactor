@@ -1,10 +1,14 @@
 import json
 from pathlib import Path
-from typing import Any
 
-from returns.result import Result, safe
+from returns.result import Failure, Result, Success
+
+from ..json_value import Json
 
 
-def load_json(file_path: Path) -> Result[list[dict[str, Any]], str]:
-    """Parse JSON file into list of dictionaries."""
-    return safe(lambda: json.load(file_path.open("r", encoding="utf-8")))().alt(str)
+def load_json(file_path: Path) -> Result[Json, str]:
+    try:
+        with file_path.open(encoding="utf-8") as f:
+            return Success(json.load(f))
+    except (OSError, json.JSONDecodeError) as error:
+        return Failure(str(error))

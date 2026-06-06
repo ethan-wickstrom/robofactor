@@ -1,0 +1,155 @@
+source_roots = ["src"]
+root_module = "ignore"
+exact = true
+ignore_type_checking_imports = true
+forbid_circular_dependencies = true
+
+[external]
+rename = ["dspy:dspy-ai"]
+exclude = ["ruff", "ty"]
+
+[[modules]]
+path = "robofactor.checks"
+depends_on = [
+  "robofactor.checks.engine",
+  "robofactor.checks.model",
+  "robofactor.checks.quality",
+  "robofactor.checks.signature",
+]
+
+[[modules]]
+path = "robofactor.checks.behavior"
+depends_on = ["robofactor.checks.model"]
+visibility = ["robofactor.checks", "robofactor.checks.engine"]
+
+[[modules]]
+path = "robofactor.checks.engine"
+depends_on = [
+  "robofactor.checks.behavior",
+  "robofactor.checks.model",
+  "robofactor.checks.quality",
+  "robofactor.checks.signature",
+]
+visibility = ["robofactor.checks"]
+
+[[modules]]
+path = "robofactor.checks.model"
+visibility = [
+  "robofactor.checks",
+  "robofactor.checks.behavior",
+  "robofactor.checks.engine",
+  "robofactor.checks.quality",
+  "robofactor.checks.signature",
+]
+
+[[modules]]
+path = "robofactor.checks.quality"
+depends_on = ["robofactor.checks.model"]
+visibility = ["robofactor.checks", "robofactor.checks.engine"]
+
+[[modules]]
+path = "robofactor.checks.signature"
+depends_on = ["robofactor.checks.model"]
+visibility = ["robofactor.checks", "robofactor.checks.engine"]
+
+[[modules]]
+path = "robofactor.refactoring"
+depends_on = ["robofactor.checks"]
+
+[[modules]]
+path = "robofactor.refactor_check"
+depends_on = ["robofactor.checks", "robofactor.types"]
+
+[[modules]]
+path = "robofactor.modules"
+depends_on = [
+  "robofactor.checks",
+  "robofactor.refactor_check",
+  "robofactor.signatures",
+  "robofactor.types",
+]
+
+[[modules]]
+path = "robofactor.signatures"
+depends_on = ["robofactor.types"]
+
+[[modules]]
+path = "robofactor.data"
+depends_on = ["robofactor.checks", "robofactor.data._internal", "robofactor.utils"]
+
+[[modules]]
+path = "robofactor.data._internal"
+visibility = ["robofactor.data"]
+
+[[modules]]
+path = "robofactor.ui"
+depends_on = ["robofactor.config", "robofactor.refactor_check", "robofactor.types"]
+
+[[modules]]
+path = "robofactor.main"
+depends_on = [
+  "robofactor.checks",
+  "robofactor.config",
+  "robofactor.data",
+  "robofactor.modules",
+  "robofactor.refactor_check",
+  "robofactor.types",
+  "robofactor.ui",
+]
+
+[[modules]]
+path = "robofactor.types"
+
+[[modules]]
+path = "robofactor.json_value"
+utility = true
+
+[[modules]]
+path = "robofactor.config"
+visibility = ["robofactor.main", "robofactor.ui"]
+
+[[modules]]
+path = "robofactor.utils"
+visibility = ["robofactor.data"]
+
+[[interfaces]]
+from = ["robofactor.checks"]
+expose = [
+  "BehaviorTest",
+  "CallOutcome",
+  "CheckFailure",
+  "CheckName",
+  "CheckReport",
+  "CheckSummary",
+  "FunctionParameter",
+  "FunctionSignature",
+  "ParameterKind",
+  "QualityReport",
+  "Raised",
+  "Returned",
+  "check_candidate",
+  "check_refactor",
+  "parse_function_signature",
+  "python_quality",
+]
+
+[[interfaces]]
+from = ["robofactor.types"]
+expose = [
+  "AssessmentRecommendation",
+  "CodeAnalysisReport",
+  "ComplexityReport",
+  "DocumentationReport",
+  "LintingReport",
+  "OpportunityCategory",
+  "PlanStep",
+  "PlanStepFocus",
+  "PythonCode",
+  "QualityAssessment",
+  "QualityMetrics",
+  "RecommendationPriority",
+  "RefactoredArtifact",
+  "RefactoringOpportunity",
+  "RefactoringPlanModel",
+  "TypingReport",
+]
