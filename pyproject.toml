@@ -4,23 +4,26 @@ version = "0.1.1"
 description = "The robot who refactors: /[^_^]\\"
 readme = "README.md"
 authors = [{ name = "ethan-wickstrom", email = "e.t.wickstrom@wustl.edu" }]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Code Generators",
   "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-  "typer>=0.16.0",
-  "rich>=13.7.1",
-  "dspy-ai>=3",
-  "mlflow>=3.1.0",
-  "beartype>=0.21.0",
-  "returns>=0.26.0",
-  "gepa>=0.0.7",
+  "typer>=0.26.7",
+  "rich>=15.0.0",
+  "dspy-ai>=3.2.1",
+  "mlflow>=3.13.0",
+  "beartype>=0.22.9",
+  "returns>=0.28.0",
+  "rope>=1.14.0",
+  "pydantic>=2.13.4",
+  "hypothesis>=6.155.2",
+  "ruff>=0.15.16",
+  "ty>=0.0.44",
 ]
 
 [project.urls]
@@ -33,36 +36,47 @@ Documentation = "https://github.com/ethan-wickstrom/robofactor#readme"
 robofactor = "robofactor.main:app"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = [
-  "src/robofactor",
-]
+requires = ["uv_build>=0.11.14,<0.12"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-  "pytest>=8.4.2",
-  "pytest-cov>=7.0.0",
-  "ty>=0.0.1a22",
+  "mutmut>=3.5.0",
+  "pytest>=9.0.3",
+  "pytest-cov>=7.1.0",
+  "tach>=0.35.0",
 ]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
+extend-exclude = [
+  "mutants",
+  "optimized",
+]
+
+[tool.ruff.format]
+line-ending = "lf"
 
 [tool.ruff.lint]
 select = [
-  "E",   # pycodestyle errors
-  "W",   # pycodestyle warnings
-  "F",   # pyflakes
-  "I",   # isort
-  "N",   # pep8-naming
-  "B",   # flake8-bugbear
-  "UP",  # pyupgrade
-  "RUF", # ruff-specific rules
-  "C90", # mccabe complexity (C901)
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # import sorting
+  "N",    # pep8-naming
+  "B",    # flake8-bugbear
+  "UP",   # pyupgrade
+  "RUF",  # ruff-specific rules
+  "C901", # McCabe complexity
+  "C4",   # comprehension quality
+  "SIM",  # simplify control flow
+  "RET",  # return statement clarity
+  "ARG",  # unused arguments
+  "PIE",  # small correctness and style issues
+  "PLC",  # Pylint conventions
+  "PLE",  # Pylint errors
+  "PLW",  # Pylint warnings
 ]
 ignore = [
   "E501", # line too long (handled by formatter)
@@ -73,6 +87,14 @@ ignore = [
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+[tool.ty.environment]
+python-version = "3.14"
+python-platform = "all"
+root = ["./src"]
+
+[tool.ty.src]
+include = ["src", "tests"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -102,3 +124,10 @@ exclude_lines = [
   "raise NotImplementedError",
   "if __name__ == .__main__.:",
 ]
+
+[tool.mutmut]
+source_paths = ["src/robofactor"]
+pytest_add_cli_args_test_selection = ["tests"]
+pytest_add_cli_args = ["-p", "no:tach"]
+mutate_only_covered_lines = true
+use_setproctitle = false

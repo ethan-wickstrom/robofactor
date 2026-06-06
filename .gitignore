@@ -25,6 +25,7 @@ htmlcov/
 coverage.xml
 
 # ML / DSPy artifacts
+optimized/
 mlartifacts/
 mlruns/
 mlflow.db
