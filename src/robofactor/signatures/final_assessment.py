@@ -1,14 +1,14 @@
 import dspy
 
 from robofactor.types import (
-    EvaluationRecommendation,
+    AssessmentRecommendation,
     PythonCode,
+    QualityAssessment,
     QualityMetrics,
-    QualityVerdict,
 )
 
 
-class FinalEvaluation(dspy.Signature):
+class FinalAssessment(dspy.Signature):
     """
     Assess the refactored code using quantitative metrics and test results.
     Provide a weighted quality score and structured recommendations.
@@ -20,7 +20,7 @@ class FinalEvaluation(dspy.Signature):
     final_score: float = dspy.OutputField(
         description="Weighted quality score (0.0-1.0)", ge=0.0, le=1.0
     )
-    verdict: QualityVerdict = dspy.OutputField(description="Overall qualitative verdict")
-    recommendations: list[EvaluationRecommendation] = dspy.OutputField(
+    assessment: QualityAssessment = dspy.OutputField(description="Overall qualitative assessment")
+    recommendations: list[AssessmentRecommendation] = dspy.OutputField(
         description="Actionable follow-up recommendations"
     )

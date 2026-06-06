@@ -1,7 +1,7 @@
 [
   {
     "code_snippet": "import os\n\nTAX_RATES_BY_STATE = {\n    'default': 0.08,\n    'CA': 0.095,\n    'NY': 0.088,\n    'TX': 0.0825\n}\n\ndef get_valid_line_totals(items_list):\n    temp_list = []\n    for item in items_list:\n        is_active = True\n        if 'status' in item and item['status'] == 'CANCELLED':\n            is_active = False\n        \n        if not is_active:\n            continue\n\n        try:\n            q = int(item.get('qty', '0'))\n        except Exception:\n            q = 0\n\n        if q > 0:\n            item_type = item.get('type')\n            if item_type == 'PRODUCT':\n                total = item['price'] * q\n                temp_list.append(total)\n            elif item_type == 'SERVICE':\n                total = item['price'] + item.get('fee', 0)\n                temp_list.append(total)\n    return temp_list\n\ndef calculate_final_price(order_data):\n    line_totals = get_valid_line_totals(order_data.get('items', []))\n\n    subtotal = 0\n    for val in line_totals:\n        subtotal += val\n\n    customer_data = order_data.get('customer_info', {})\n    customer_level = customer_data.get('level', 'BRONZE')\n    discount_percentage = 0.0\n    if customer_level == 'GOLD':\n        if subtotal > 500:\n            discount_percentage = 0.20\n        else:\n            discount_percentage = 0.15\n    elif customer_level == 'SILVER':\n        if subtotal > 0:\n            discount_percentage = 0.05\n\n    price_after_discount = subtotal * (1 - discount_percentage)\n\n    region = customer_data.get('region', 'default')\n    tax_rate = TAX_RATES_BY_STATE.get(region, TAX_RATES_BY_STATE['default'])\n\n    final_total = price_after_discount * (1 + tax_rate)\n\n    return f\"${final_total:.2f}\"",
-    "test_cases": [
+    "behavior_tests": [
       {
         "args": [
           {
@@ -105,7 +105,7 @@
   },
   {
     "code_snippet": "from datetime import datetime\n\n_g_report_data = {}\n\ndef _parse_and_filter(transactions_raw, config_str):\n    global _g_report_data\n    _g_report_data = {}\n\n    configs = {}\n    for part in config_str.split(';'):\n        if '=' in part:\n            key, val = part.split('=', 1)\n            configs[key] = val\n\n    start_date = datetime.strptime(configs['start'], '%Y-%m-%d')\n    end_date = datetime.strptime(configs['end'], '%Y-%m-%d')\n    \n    filtered_transactions = []\n    for trans in transactions_raw:\n        if trans.get('user') == 'system_user' or 'date_str' not in trans:\n            continue\n        try:\n            trans_date = datetime.strptime(trans['date_str'], '%Y-%m-%d')\n            if start_date <= trans_date <= end_date:\n                amount = trans.get('amount', trans.get('amt', 0))\n                if isinstance(amount, (int, float)) and amount > 0:\n                    filtered_transactions.append({'user': trans['user'], 'amount': amount})\n        except Exception:\n            pass\n    return filtered_transactions, configs.get('rules', '')\n\ndef _aggregate_and_calculate(filtered_list, rules_str):\n    global _g_report_data\n    for item in filtered_list:\n        user = item['user']\n        if user not in _g_report_data:\n            _g_report_data[user] = {'amounts': [], 'total': 0.0}\n        _g_report_data[user]['amounts'].append(item['amount'])\n        _g_report_data[user]['total'] += item['amount']\n\n    final_report = {}\n    raw_rules = rules_str.split(',') if rules_str else []\n    for user, data in _g_report_data.items():\n        total = data['total']\n        count = len(data['amounts'])\n        max_val = max(data['amounts']) if data['amounts'] else 0\n        \n        discounts = [0.0]\n        for rule in raw_rules:\n            if ':' in rule and '>' in rule:\n                condition, discount_val_str = rule.split(':')\n                rule_type, threshold_str = condition.split('>')\n                if rule_type == 'total' and total > float(threshold_str):\n                    discounts.append(float(discount_val_str))\n                elif rule_type == 'count' and count > float(threshold_str):\n                    discounts.append(float(discount_val_str))\n                elif rule_type == 'max' and max_val > float(threshold_str):\n                    discounts.append(float(discount_val_str))\n        \n        final_discount = max(discounts)\n        final_price = total * (1 - final_discount)\n\n        final_report[user] = {\n            'total_spent': round(total, 2),\n            'transaction_count': count,\n            'average_spend': round(total / count if count else 0, 2),\n            'max_transaction': round(max_val, 2),\n            'applied_discount_rate': final_discount,\n            'final_cost': round(final_price, 2),\n            'transactions_sorted_str': ';'.join(map(str, sorted(data['amounts'])))\n        }\n    return final_report\n\ndef process_and_generate_report(transactions, config):\n    filtered_data, rules = _parse_and_filter(transactions, config)\n    result = _aggregate_and_calculate(filtered_data, rules)\n    return result",
-    "test_cases": [
+    "behavior_tests": [
       {
         "args": [
           [
@@ -181,7 +181,7 @@
   },
   {
     "code_snippet": "def merge_user_data(users_db, updates_list):\n    result = {}\n    for user_id in users_db:\n        result[user_id] = {}\n        for key in users_db[user_id]:\n            result[user_id][key] = users_db[user_id][key]\n    \n    for update in updates_list:\n        user_id = update.get('id')\n        if user_id == None:\n            continue\n        if user_id not in result:\n            result[user_id] = {}\n        for field_name in update:\n            if field_name != 'id':\n                result[user_id][field_name] = update[field_name]\n    \n    final_result = {}\n    for uid in result:\n        if 'name' in result[uid] and 'email' in result[uid]:\n            final_result[uid] = result[uid]\n    \n    return final_result",
-    "test_cases": [
+    "behavior_tests": [
       {
         "args": [
           {"u1": {"name": "Alice", "email": "alice@example.com", "age": 30}},
@@ -209,7 +209,7 @@
   },
   {
     "code_snippet": "def calculate_inventory_value(inventory, price_catalog):\n    total_value = 0\n    items_processed = 0\n    missing_prices = []\n    \n    for item_id in inventory:\n        quantity = inventory[item_id]\n        if type(quantity) == str:\n            try:\n                quantity = int(quantity)\n            except:\n                quantity = 0\n        \n        if quantity <= 0:\n            continue\n        \n        price = None\n        if item_id in price_catalog:\n            price = price_catalog[item_id]\n        \n        if price == None:\n            missing_prices.append(item_id)\n        else:\n            item_value = price * quantity\n            total_value = total_value + item_value\n            items_processed = items_processed + 1\n    \n    result_dict = {}\n    result_dict['total_value'] = round(total_value, 2)\n    result_dict['items_count'] = items_processed\n    result_dict['missing_prices'] = missing_prices\n    return result_dict",
-    "test_cases": [
+    "behavior_tests": [
       {
         "args": [{"item1": 10, "item2": "5", "item3": 3}, {"item1": 9.99, "item2": 15.0, "item4": 20.0}],
         "kwargs": {},
@@ -234,7 +234,7 @@
   },
   {
     "code_snippet": "def find_top_customers(orders_list, min_order_value):\n    customer_totals = {}\n    \n    for order in orders_list:\n        customer_id = order.get('customer_id')\n        order_total = order.get('total', 0)\n        \n        if customer_id not in customer_totals:\n            customer_totals[customer_id] = 0\n        customer_totals[customer_id] = customer_totals[customer_id] + order_total\n    \n    qualified_customers = []\n    for cust_id in customer_totals:\n        if customer_totals[cust_id] >= min_order_value:\n            qualified_customers.append(cust_id)\n    \n    sorted_customers = []\n    customer_values = []\n    for cust_id in qualified_customers:\n        customer_values.append((cust_id, customer_totals[cust_id]))\n    \n    customer_values.sort(key=lambda x: x[1], reverse=True)\n    \n    for item in customer_values:\n        sorted_customers.append(item[0])\n    \n    return sorted_customers",
-    "test_cases": [
+    "behavior_tests": [
       {
         "args": [
           [

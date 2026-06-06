@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import logging
-import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import dspy
 import mlflow
 import typer
-from dspy.teleprompt.gepa.gepa import GEPAFeedbackMetric
-from dspy.teleprompt.gepa.gepa_utils import DSPyTrace
 from returns.result import Failure, Result, Success
 from rich.console import Console
 from rich.panel import Panel
@@ -17,21 +15,13 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 
 from . import config, ui
-from .data import examples, models
-from .evaluation import EvaluationResult, evaluate_refactored_code
+from .checks import BehaviorTest
+from .data import examples
 from .modules.code_refactor import CodeRefactor
+from .refactor_check import check_candidate_code, check_code_syntax, check_refactored_code
 from .types import PythonCode
 
 app = typer.Typer()
-
-
-def _get_functional_score(eval_data: EvaluationResult) -> float:
-    """Calculate functional test pass rate, defaulting to 1.0 if no tests."""
-    return (
-        eval_data.functional_check.passed_tests / eval_data.functional_check.total_tests
-        if eval_data.functional_check.total_tests > 0
-        else 1.0
-    )
 
 
 def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) -> float:
@@ -40,88 +30,84 @@ def _calculate_reward_score(example: dspy.Example, prediction: dspy.Prediction) 
         logging.debug("Reward score 0.0: No artifact or empty code in prediction")
         return 0.0
 
-    eval_result = evaluate_refactored_code(artifact.code, getattr(example, "test_cases", []))
+    check_result = check_candidate_code(artifact.code, example.behavior_tests)
 
-    match eval_result:
-        case Success(eval_data):
-            score = _get_functional_score(eval_data)
-            fc = eval_data.functional_check
-            logging.debug(f"Reward score {score}: {fc.passed_tests}/{fc.total_tests} tests passed")
+    match check_result:
+        case Success(checked):
+            score = checked.behavior.pass_rate
+            fc = checked.behavior
+            logging.debug(f"Reward score {score}: {fc.passed}/{fc.total} tests passed")
             return score
         case Failure(error_msg):
-            logging.debug(f"Reward score 0.0: Evaluation failed - {error_msg}")
+            logging.debug(f"Reward score 0.0: candidate check failed - {error_msg}")
     return 0.0
 
 
-def _reward_fn(inputs: dict[str, Any], prediction: dspy.Prediction) -> float:
+def _reward_fn(inputs: Mapping[str, str], prediction: dspy.Prediction) -> float:
     """Adapter for reward function matching code snippets to training examples."""
     match examples.get_examples():
         case Success(train_set):
             code_snippet = inputs["code_snippet"]
             if example := next((ex for ex in train_set if ex.code_snippet == code_snippet), None):
                 return _calculate_reward_score(example, prediction)
-            logging.warning(f"No matching example found for code_snippet: {code_snippet!r}")
-            if os.environ.get("ROBOFACTOR_DEV_MODE", "0") == "1":
-                raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
-        case Failure():
-            pass
-    return 0.0
+            raise ValueError(f"Missing example for code_snippet: {code_snippet!r}")
+        case Failure(error_message):
+            raise ValueError(f"Training examples unavailable for reward scoring: {error_message}")
+    raise AssertionError("unexpected training example result")
 
 
-class _GEPARefactorMetric(GEPAFeedbackMetric):
-    """GEPA metric with rich textual feedback for reflection-driven optimization."""
+class _GEPARefactorMetric:
+    """Metric that returns score and stage-specific feedback for GEPA."""
 
     def _analyze_trace_for_module_feedback(  # noqa: C901
-        self, pred_trace: DSPyTrace, pred_name: str | None
+        self, pred_trace: object, pred_name: str | None
     ) -> str:
-        """Extract module-specific insights from execution trace."""
+        """Return feedback for the pipeline module that produced the prediction."""
         if not pred_trace or not pred_name:
             return ""
 
         feedback_parts = []
 
-        # Analyze CodeAnalysis module
-        if pred_name == "analyzer" or "analyzer" in str(pred_trace):
-            if analysis_report := getattr(pred_trace, "report", None):
-                if hasattr(analysis_report, "opportunities") and not analysis_report.opportunities:
+        if (pred_name == "analyzer" or "analyzer" in str(pred_trace)) and (
+            analysis_report := getattr(pred_trace, "report", None)
+        ):
+            if hasattr(analysis_report, "opportunities") and not analysis_report.opportunities:
+                feedback_parts.append(
+                    "MODULE ISSUE: CodeAnalysis found no refactoring opportunities. "
+                    "Instruction should emphasize identifying code smells, complexity, and improvement areas."
+                )
+            if (
+                hasattr(analysis_report, "complexity")
+                and "complex" not in str(analysis_report.complexity).lower()
+            ):
+                feedback_parts.append(
+                    "MODULE HINT: CodeAnalysis may be underreporting complexity. "
+                    "Look for nested loops, long functions, high cyclomatic complexity."
+                )
+
+        if (pred_name == "planner" or "planner" in str(pred_trace)) and (
+            plan := getattr(pred_trace, "plan", None)
+        ):
+            if hasattr(plan, "steps") and len(plan.steps) == 0:
+                feedback_parts.append(
+                    "MODULE ISSUE: RefactoringPlan generated no concrete steps. "
+                    "Instruction should require actionable, ordered refactoring actions."
+                )
+            if hasattr(plan, "objective"):
+                objective_lower = str(plan.objective).lower()
+                if "class" in objective_lower and "add" in objective_lower:
                     feedback_parts.append(
-                        "MODULE ISSUE: CodeAnalysis found no refactoring opportunities. "
-                        "Instruction should emphasize identifying code smells, complexity, and improvement areas."
+                        "MODULE WARNING: RefactoringPlan may be suggesting adding classes. "
+                        "CONSTRAINT: NO NEW CLASSES unless they exist in original. "
+                        "Instruction must emphasize preserving structure."
                     )
-                if (
-                    hasattr(analysis_report, "complexity")
-                    and "complex" not in str(analysis_report.complexity).lower()
-                ):
+                if "restructure" in objective_lower or "reorganize" in objective_lower:
                     feedback_parts.append(
-                        "MODULE HINT: CodeAnalysis may be underreporting complexity. "
-                        "Look for nested loops, long functions, high cyclomatic complexity."
+                        "MODULE WARNING: RefactoringPlan suggests major restructuring. "
+                        "CONSTRAINT: KEEP STRUCTURE - functions stay functions. "
+                        "Focus on incremental improvements: types, docstrings, readability."
                     )
 
-        # Analyze RefactoringPlan module
-        if pred_name == "planner" or "planner" in str(pred_trace):
-            if plan := getattr(pred_trace, "plan", None):
-                if hasattr(plan, "steps") and len(plan.steps) == 0:
-                    feedback_parts.append(
-                        "MODULE ISSUE: RefactoringPlan generated no concrete steps. "
-                        "Instruction should require actionable, ordered refactoring actions."
-                    )
-                # Check for constraint violations in plan description
-                if hasattr(plan, "objective"):
-                    objective_lower = str(plan.objective).lower()
-                    if "class" in objective_lower and "add" in objective_lower:
-                        feedback_parts.append(
-                            "MODULE WARNING: RefactoringPlan may be suggesting adding classes. "
-                            "CONSTRAINT: NO NEW CLASSES unless they exist in original. "
-                            "Instruction must emphasize preserving structure."
-                        )
-                    if "restructure" in objective_lower or "reorganize" in objective_lower:
-                        feedback_parts.append(
-                            "MODULE WARNING: RefactoringPlan suggests major restructuring. "
-                            "CONSTRAINT: KEEP STRUCTURE - functions stay functions. "
-                            "Focus on incremental improvements: types, docstrings, readability."
-                        )
-
-        # Analyze RefactoredCode module (implementer)
         if pred_name == "implementer" or "implementer" in str(pred_trace):
             feedback_parts.append(
                 "MODULE CONTEXT: RefactoredCode is the final generator. "
@@ -135,15 +121,14 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
         self,
         gold: dspy.Example,
         pred: dspy.Prediction,
-        trace: DSPyTrace | None = None,
+        trace: object | None = None,
         pred_name: str | None = None,
-        pred_trace: DSPyTrace | None = None,
+        pred_trace: object | None = None,
     ) -> dspy.Prediction:
         """Return score with detailed feedback on pipeline stage failures."""
-        # Analyze trace for module-specific insights
-        trace_feedback = self._analyze_trace_for_module_feedback(pred_trace, pred_name)
+        del trace
+        trace_feedback = self._analyze_trace_for_module_feedback(pred_trace or [], pred_name)
 
-        # Extract artifact
         if not (artifact := getattr(pred, "artifact", None)):
             base_feedback = (
                 f"STAGE: {'RefactoredCode' if pred_name else 'Unknown'}\n"
@@ -161,7 +146,7 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
             base_feedback = (
                 f"STAGE: {'RefactoredCode' if pred_name else 'Unknown'}\n"
                 "FAILURE: Empty code artifact generated.\n"
-                "ACTION: Refactored code must be non-empty. Check if model is generating placeholder text."
+                "ACTION: Refactored code must be non-empty Python."
             )
             return dspy.Prediction(
                 score=0.0,
@@ -171,12 +156,9 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
             )
 
         refactored_code = artifact.code
-        test_cases = getattr(gold, "test_cases", [])
+        behavior_tests = gold.behavior_tests
 
-        # Stage 1: Syntax validation
-        from . import analysis
-
-        syntax_result = analysis.check_syntax(refactored_code)
+        syntax_result = check_code_syntax(refactored_code)
         match syntax_result:
             case Failure(error_msg):
                 base_feedback = (
@@ -195,35 +177,29 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
             case Success(_):
                 pass
 
-        # Stage 2: Functional correctness
-        eval_result = evaluate_refactored_code(refactored_code, test_cases)
-        match eval_result:
-            case Success(eval_data):
-                fc = eval_data.functional_check
-                passed = fc.passed_tests
-                total = fc.total_tests
-                functional_score = passed / total if total > 0 else 1.0
+        check_result = check_candidate_code(refactored_code, behavior_tests)
+        match check_result:
+            case Success(checked):
+                fc = checked.behavior
+                passed = fc.passed
+                total = fc.total
+                functional_score = fc.pass_rate
 
-                # Calculate quality component scores
-                qm = eval_data.quality_metrics
+                qm = checked.quality
                 linting_score = qm.linting.score
                 complexity_score = qm.complexity.score
                 typing_score = qm.typing.score
                 documentation_score = qm.documentation.score
 
-                # Aggregate quality score (equal weights)
                 quality_score = (
                     linting_score + complexity_score + typing_score + documentation_score
                 ) / 4.0
 
-                # Multi-objective weighted score: 70% functional, 30% quality
-                # Functional correctness is critical (must preserve behavior)
-                # Quality improvements are secondary but important for refactoring
+                # GEPA must prefer behavior preservation over code quality improvements.
                 weighted_score = (0.7 * functional_score) + (0.3 * quality_score)
 
-                # Build detailed feedback with multi-objective decomposition
                 feedback_parts = [
-                    "STAGE: Full Pipeline (multi-objective evaluation)",
+                    "STAGE: Full Pipeline (multi-objective assessment)",
                     f"OBJECTIVES: Functional={functional_score:.2f} (70%), Quality={quality_score:.2f} (30%)",
                     f"WEIGHTED SCORE: {weighted_score:.2f}",
                     "",
@@ -237,7 +213,6 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
                     f"  - Documentation: {documentation_score:.2f}",
                 ]
 
-                # Success/failure analysis
                 if functional_score == 1.0:
                     feedback_parts.append(
                         f"\nFUNCTIONAL: ✓ All {total} test(s) passed"
@@ -253,7 +228,6 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
                         "Check if refactoring changed logic, return values, or edge case handling."
                     )
 
-                # Quality issues
                 if linting_score < 1.0 and qm.linting.issues:
                     feedback_parts.append(
                         f"LINTING: ✗ Issues found: {', '.join(qm.linting.issues[:3])}"
@@ -270,7 +244,6 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
                         f"COMPLEXITY: ✓ Acceptable (score {complexity_score:.2f})"
                     )
 
-                # Append trace-based module feedback if available
                 if trace_feedback:
                     feedback_parts.append(f"\n{trace_feedback}")
 
@@ -280,16 +253,13 @@ class _GEPARefactorMetric(GEPAFeedbackMetric):
                 return dspy.Prediction(
                     score=0.0,
                     feedback=(
-                        f"STAGE: Evaluation Pipeline\n"
+                        f"STAGE: Check Pipeline\n"
                         f"FAILURE: {error_msg}\n"
-                        "ACTION: Code may have runtime errors or evaluation infrastructure failed."
+                        "ACTION: Code may have runtime errors or check infrastructure failed."
                     ),
                 )
             case _:
-                return dspy.Prediction(
-                    score=0.0,
-                    feedback="STAGE: Unknown\nFAILURE: Unexpected evaluation result type.",
-                )
+                raise AssertionError("Unhandled candidate check result.")
 
 
 def _setup_environment(tracing: bool, mlflow_uri: str, mlflow_experiment: str) -> Console:
@@ -346,7 +316,7 @@ def _load_or_compile_model(
                     border_style="red",
                 )
             )
-            console.print("[yellow]Proceeding without optimization.[/yellow]")
+            raise typer.Exit(code=1)
 
     return self_correcting_refactorer
 
@@ -362,7 +332,7 @@ def _render_original(console: Console, script_path: Path, source_code: str) -> N
     )
 
 
-def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonCode, str]:
+def _extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonCode, str]:
     """Extract and validate non-empty Python code from prediction."""
     if not (artifact := getattr(prediction, "artifact", None)):
         return Failure("No refactored code produced by the model.")
@@ -373,21 +343,22 @@ def _safe_extract_refactored_code(prediction: dspy.Prediction) -> Result[PythonC
     )
 
 
-def _evaluate_and_maybe_write(
+def _check_and_maybe_write(
     console: Console,
+    source_code: str,
     refactored_code: PythonCode,
-    tests: list[models.TestCase],
+    behavior_tests: tuple[BehaviorTest, ...],
     script_path: Path,
     write: bool,
     verbose: bool = False,
 ) -> None:
-    """Evaluate refactored code and optionally write to file if successful."""
-    with console.status("[bold cyan]Evaluating code quality...[/]"):
-        result = evaluate_refactored_code(refactored_code, tests)
+    """Check refactored code and optionally write to file if successful."""
+    with console.status("[bold cyan]Checking code quality...[/]"):
+        result = check_refactored_code(source_code, refactored_code, behavior_tests)
 
     match result:
-        case Success(eval_data):
-            ui.display_evaluation_results(console, eval_data, verbose=verbose)
+        case Success(checked):
+            ui.display_check_results(console, checked, verbose=verbose)
             if write:
                 console.print(
                     f"[yellow]Writing refactored code back to {script_path.name}...[/yellow]"
@@ -397,13 +368,13 @@ def _evaluate_and_maybe_write(
         case Failure(error_message):
             console.print(
                 Panel(
-                    f"[bold red]Evaluation Failed:[/bold red]\n{error_message}",
+                    f"[bold red]Checks Failed:[/bold red]\n{error_message}",
                     border_style="red",
                 )
             )
             if write:
                 console.print(
-                    "[bold yellow]Skipping write-back due to evaluation failure.[/bold yellow]"
+                    "[bold yellow]Skipping write-back due to failed checks.[/bold yellow]"
                 )
 
 
@@ -415,15 +386,15 @@ def _run_refactoring_on_file(
     show_diff: bool = False,
     verbose: bool = False,
 ) -> None:
-    """Execute refactoring workflow: read, refactor, evaluate, and optionally write."""
+    """Execute refactoring workflow: read, refactor, check, and optionally write."""
     console.print(Rule(f"[bold magenta]Refactoring {script_path.name}[/bold magenta]"))
     source_code = script_path.read_text(encoding="utf-8")
     _render_original(console, script_path, source_code)
 
     refactor_example = dspy.Example(
         code_snippet=source_code,
-        test_cases=[],
-    ).with_inputs("code_snippet")
+        behavior_tests=(),
+    ).with_inputs("code_snippet", "behavior_tests")
 
     with console.status("[bold cyan]Refactoring code...[/]"):
         prediction = refactorer(**refactor_example.inputs())
@@ -432,9 +403,17 @@ def _run_refactoring_on_file(
         console, prediction, original_code=source_code, show_diff=show_diff
     )
 
-    match _safe_extract_refactored_code(prediction):
+    match _extract_refactored_code(prediction):
         case Success(refactored_code):
-            _evaluate_and_maybe_write(console, refactored_code, [], script_path, write, verbose)
+            _check_and_maybe_write(
+                console,
+                source_code,
+                refactored_code,
+                (),
+                script_path,
+                write,
+                verbose,
+            )
         case Failure(msg):
             console.print(
                 Panel(
@@ -490,11 +469,13 @@ def main(
         False, "--verbose", help="Show full details (all issues, warnings, etc.)."
     ),
 ) -> None:
-    """A DSPy-powered tool to analyze, plan, and refactor Python code."""
+    """Review, check, and optionally apply Python refactors."""
     console = _setup_environment(tracing, mlflow_uri, mlflow_experiment)
 
     task_llm = dspy.LM(task_llm_model, max_tokens=config.TASK_LLM_MAX_TOKENS, temperature=1.0)
-    reflection_llm = dspy.LM(prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS, temperature=1.0)
+    reflection_llm = dspy.LM(
+        prompt_llm_model, max_tokens=config.PROMPT_LLM_MAX_TOKENS, temperature=1.0
+    )
     dspy.configure(lm=task_llm)
 
     refactorer = _load_or_compile_model(config.OPTIMIZER_PATH, optimize, console, reflection_llm)

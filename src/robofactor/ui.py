@@ -1,4 +1,4 @@
-"""Rich-based UI for displaying refactoring process and results."""
+"""Terminal rendering for refactor reviews and checks."""
 
 from difflib import unified_diff
 
@@ -11,7 +11,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import config
-from .evaluation import EvaluationResult
+from .refactor_check import CheckedRefactor
 from .types import CodeAnalysisReport, RefactoredArtifact, RefactoringPlanModel
 
 
@@ -30,14 +30,13 @@ def _score_style(score: float) -> str:
     """Return color style based on score value."""
     if score >= 0.9:
         return config.UI_COLORS["success"]
-    elif score >= 0.7:
+    if score >= 0.7:
         return config.UI_COLORS["warning"]
     return config.UI_COLORS["error"]
 
 
-def _truncate_list(items: list[str] | None, limit: int, label: str = "items") -> Text:
+def _truncate_list(items: list[str], limit: int, label: str = "items") -> Text:
     """Truncate a list with a summary line if needed."""
-    items = items or []
     text = Text()
 
     if len(items) <= limit:
@@ -52,7 +51,7 @@ def _truncate_list(items: list[str] | None, limit: int, label: str = "items") ->
 
 
 def _build_summary_table(
-    prediction: dspy.Prediction, result: EvaluationResult | None = None
+    prediction: dspy.Prediction, result: CheckedRefactor | None = None
 ) -> Table:
     """Build a compact summary table of key metrics."""
     table = Table(show_header=False, box=None, padding=(0, 2), expand=False)
@@ -62,25 +61,23 @@ def _build_summary_table(
     report = prediction.analysis_report
     plan = prediction.plan
 
-    table.add_row("Function:", result.func_name if result else "Pending")
-    table.add_row("Opportunities:", str(len(report.opportunities or [])))
+    table.add_row("Function:", result.function_name if result else "Pending")
+    table.add_row("Opportunities:", str(len(report.opportunities)))
     table.add_row("Refactoring Steps:", str(len(plan.steps)))
 
     if result:
-        fc = result.functional_check
-        if fc.total_tests > 0:
-            style = _score_style(fc.passed_tests / fc.total_tests)
-            table.add_row(
-                "Tests Passing:", f"[{style}]{fc.passed_tests}/{fc.total_tests}[/{style}]"
-            )
+        fc = result.behavior
+        if fc.total > 0:
+            style = _score_style(fc.pass_rate)
+            table.add_row("Tests Passing:", f"[{style}]{fc.passed}/{fc.total}[/{style}]")
 
         avg_quality = (
             sum(
                 [
-                    result.quality_metrics.linting.score,
-                    result.quality_metrics.complexity.score,
-                    result.quality_metrics.typing.score,
-                    result.quality_metrics.documentation.score,
+                    result.quality.linting.score,
+                    result.quality.complexity.score,
+                    result.quality.typing.score,
+                    result.quality.documentation.score,
                 ]
             )
             / 4
@@ -116,7 +113,7 @@ def _build_opportunities_table(report: CodeAnalysisReport) -> Table:
     table.add_column("Description")
     table.add_column("Expected Benefit", style=config.UI_COLORS["info"])
 
-    for opp in report.opportunities or []:
+    for opp in report.opportunities:
         table.add_row(opp.category.value, opp.description, opp.expected_benefit or "—")
 
     return table
@@ -168,23 +165,13 @@ def display_refactoring_process(
     original_code: str | None = None,
     show_diff: bool = False,
 ) -> None:
-    """Display the LLM's refactoring process with rich formatting.
-
-    Args:
-        console: Rich console for output
-        prediction: DSPy prediction containing refactoring results
-        original_code: Original source code for diff generation
-        show_diff: Whether to display unified diff
-    """
+    """Render the generated review, plan, artifact, and optional diff."""
     console.print(Rule("[bold magenta]Refactoring Process[/bold magenta]"))
 
-    # Summary
     console.print(_section("Summary", _build_summary_table(prediction), expand=False))
 
-    # Analysis
     console.print(_section("Analysis", _build_analysis_text(prediction.analysis_report)))
 
-    # Opportunities (as table if available)
     if prediction.analysis_report.opportunities:
         console.print(
             _section(
@@ -193,10 +180,8 @@ def display_refactoring_process(
             )
         )
 
-    # Plan
     console.print(_section("Refactoring Plan", _build_plan_table(prediction.plan)))
 
-    # Diff (optional)
     if show_diff and original_code:
         diff = _generate_diff(original_code, prediction.artifact.code.code)
         if diff:
@@ -208,7 +193,6 @@ def display_refactoring_process(
                 )
             )
 
-    # Final code
     console.print(
         _section(
             "Refactored Code",
@@ -221,43 +205,31 @@ def display_refactoring_process(
         )
     )
 
-    # Explanation
     console.print(_section("Implementation Details", _build_explanation_text(prediction.artifact)))
 
 
-def display_evaluation_results(
-    console: Console, result: EvaluationResult, verbose: bool = False
-) -> None:
-    """Display evaluation results with color-coded metrics.
+def display_check_results(console: Console, result: CheckedRefactor, verbose: bool = False) -> None:
+    """Render behavior and quality check results."""
+    console.print(Rule("[bold yellow]Check Results[/bold yellow]"))
 
-    Args:
-        console: Rich console for output
-        result: Evaluation result containing quality metrics
-        verbose: Show full details including all issues
-    """
-    console.print(Rule("[bold yellow]Evaluation Results[/bold yellow]"))
+    quality = result.quality
+    func_check = result.behavior
 
-    quality = result.quality_metrics
-    func_check = result.functional_check
-
-    # Metrics table
     table = Table(show_header=True, header_style="bold", expand=False, box=None, padding=(0, 2))
     table.add_column("Metric", style="bold")
     table.add_column("Score", justify="right")
 
-    # Functional tests
-    if func_check.total_tests > 0:
-        score = func_check.passed_tests / func_check.total_tests
+    if func_check.total > 0:
+        score = func_check.pass_rate
         style = _score_style(score)
         icon = "✓" if score == 1.0 else "✗" if score == 0 else "~"
         table.add_row(
             "Functional Tests",
-            f"[{style}]{icon} {func_check.passed_tests}/{func_check.total_tests}[/{style}]",
+            f"[{style}]{icon} {func_check.passed}/{func_check.total}[/{style}]",
         )
     else:
         table.add_row("Functional Tests", "[dim]N/A (no tests)[/dim]")
 
-    # Quality metrics
     for label, score in [
         ("Linting", quality.linting.score),
         ("Complexity", quality.complexity.score),
@@ -269,7 +241,6 @@ def display_evaluation_results(
 
     console.print(table)
 
-    # Issues and warnings
     limit = None if verbose else config.UI_TRUNCATE_LIMIT
 
     if quality.linting.issues:
@@ -300,6 +271,6 @@ def display_evaluation_results(
 
 
 __all__ = [
-    "display_evaluation_results",
+    "display_check_results",
     "display_refactoring_process",
 ]

@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 
-from returns.result import safe
+from returns.result import Failure, Result, Success
 
-from ..types import Json
+from ..json_value import Json
 
 
-@safe
-def load_json(file_path: Path) -> Json:
-    """Parse JSON file and return parsed data."""
-    with file_path.open(encoding="utf-8") as f:
-        return json.load(f)
+def load_json(file_path: Path) -> Result[Json, str]:
+    try:
+        with file_path.open(encoding="utf-8") as f:
+            return Success(json.load(f))
+    except (OSError, json.JSONDecodeError) as error:
+        return Failure(str(error))

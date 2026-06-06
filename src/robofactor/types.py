@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
 import dspy
 from pydantic import BaseModel, Field
 
-type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 if TYPE_CHECKING:
     from dspy.adapters.types.code import Code as _DSPyCode
 
@@ -15,7 +14,7 @@ else:
     PythonCode = dspy.Code[Literal["python"]]
 
 
-class OpportunityCategory(str, Enum):
+class OpportunityCategory(StrEnum):
     """Categories describing the primary focus of a refactoring opportunity."""
 
     PERFORMANCE = "PERFORMANCE"
@@ -63,7 +62,7 @@ class CodeAnalysisReport(BaseModel):
     opportunities: list[RefactoringOpportunity] = Field(default_factory=list)
 
 
-class PlanStepFocus(str, Enum):
+class PlanStepFocus(StrEnum):
     """Focus area targeted by a refactoring step."""
 
     STRUCTURE = "structure"
@@ -123,7 +122,7 @@ class LintingReport(BaseModel):
 
 
 class ComplexityReport(BaseModel):
-    """Cyclomatic complexity evaluation."""
+    """Cyclomatic complexity assessment."""
 
     score: float = Field(ge=0.0, le=1.0)
     warnings: list[str] = Field(default_factory=list)
@@ -150,7 +149,7 @@ class QualityMetrics(BaseModel):
     documentation: DocumentationReport
 
 
-class RecommendationPriority(str, Enum):
+class RecommendationPriority(StrEnum):
     """Priority describing urgency of acting on a recommendation."""
 
     LOW = "low"
@@ -167,8 +166,8 @@ class RecommendationPriority(str, Enum):
         )
 
 
-class EvaluationRecommendation(BaseModel):
-    """Actionable recommendation produced during final evaluation."""
+class AssessmentRecommendation(BaseModel):
+    """Actionable recommendation produced during final assessment."""
 
     area: Literal["linting", "complexity", "typing", "documentation", "functional", "general"] = (
         "general"
@@ -177,27 +176,26 @@ class EvaluationRecommendation(BaseModel):
     priority: RecommendationPriority = RecommendationPriority.MEDIUM
 
 
-class QualityVerdict(BaseModel):
-    """Final qualitative verdict accompanying the quantitative score."""
+class QualityAssessment(BaseModel):
+    """Engineer-facing assessment accompanying the quantitative score."""
 
-    decision: Literal["approve", "revise", "reject"]
+    outcome: Literal["safe_to_apply", "needs_revision", "unsafe"]
     rationale: str
     risks: list[str] = Field(default_factory=list)
 
 
 __all__ = [
+    "AssessmentRecommendation",
     "CodeAnalysisReport",
     "ComplexityReport",
     "DocumentationReport",
-    "EvaluationRecommendation",
-    "Json",
     "LintingReport",
     "OpportunityCategory",
     "PlanStep",
     "PlanStepFocus",
     "PythonCode",
+    "QualityAssessment",
     "QualityMetrics",
-    "QualityVerdict",
     "RecommendationPriority",
     "RefactoredArtifact",
     "RefactoringOpportunity",

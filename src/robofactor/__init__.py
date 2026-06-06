@@ -1,18 +1,16 @@
-import contextlib
 import os
 
 if os.environ.get("ROBOFACTOR_ENABLE_BEARTYPE") == "1":
-    with contextlib.suppress(Exception):
-        from beartype.claw import beartype_this_package
+    from beartype.claw import beartype_this_package
 
-        beartype_this_package()
+    beartype_this_package()
 
-        if os.environ.get("ROBOFACTOR_BEARTYPE_ALL") == "1":
-            from beartype import BeartypeConf
-            from beartype.claw import beartype_all
+    if os.environ.get("ROBOFACTOR_BEARTYPE_ALL") == "1":
+        from beartype import BeartypeConf
+        from beartype.claw import beartype_all
 
-            beartype_all(conf=BeartypeConf(violation_type=UserWarning))
+        beartype_all(conf=BeartypeConf(violation_type=UserWarning))
 
-from .data import examples, models
+from .data import examples
 
-__all__ = ["examples", "models"]
+__all__ = ["examples"]
