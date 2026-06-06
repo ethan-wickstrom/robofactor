@@ -1,25 +1,47 @@
-# Robofactor Agent Guide
+# Robofactor Agent Instructions
 
-## Commands
-- **Run all checks**: `make check` (runs lint, type-check, test)
-- **Test all**: `uv run pytest`
-- **Test single file**: `uv run pytest tests/path/to/test_file.py`
-- **Test single function**: `uv run pytest tests/path/to/test_file.py::test_function_name`
-- **Lint**: `uv run ruff check src tests --fix`
-- **Format**: `uv run ruff format src tests`
-- **Type-check**: `uv run ty check`
+Robofactor is a Python refactoring tool that helps software engineers review, check, and apply behavior-preserving refactorings.
 
-## Architecture
-- **Package**: Python CLI tool using DSPy for LLM-powered code refactoring
-- **Core modules**: `src/robofactor/{main.py, modules/, evaluation.py, analysis.py, ui.py}`
-- **Key components**: DSPy modules (`modules/`), evaluation pipeline (railway-oriented with `returns`), AST-based analysis
-- **CLI**: Built with `typer`, rich formatting with `rich` library
-- **No database/API**: Stateless CLI tool, optional MLflow integration for experiment tracking
+## Essentials
 
-## Code Style
-- **Python**: 3.12+, line length 100, follow Ruff config (`pyproject.toml`)
-- **Imports**: Standard library → third-party → local (sorted by isort/Ruff)
-- **Types**: Use type hints everywhere; check with `ty`
-- **Error handling**: Railway-oriented programming with `returns.result` (Success/Failure), beartype for runtime validation
-- **Naming**: snake_case for functions/variables, PascalCase for classes
-- **Testing**: pytest with coverage, test paths mirror `src/` structure
+- Use `uv` for Python tooling. Run project commands with `uv run`, add dependencies with `uv add`, and never use bare `python`, `pip`, or shell-activated environments.
+- Python is `3.14`; keep `project.requires-python`, `.python-version`, and `[tool.ty.environment]` aligned.
+- Deno `2.x` is required for DSPy's Pyodide-backed Python sandbox.
+- Run `make check` before completion when a change affects code, packaging, or CI. Use focused Makefile targets while iterating.
+- Before domain-sensitive work, read `CONTEXT-MAP.md` and the relevant `CONTEXT.md`.
+
+## Ownership Model
+
+- Treat Robofactor as fully owned internal code with zero external API consumers.
+- Do not preserve backwards compatibility, old import paths, legacy names, or fallback behavior unless a current feature explicitly requires it.
+- Prefer deletion and direct replacement over adapters, aliases, compatibility layers, optional mode switches, and hidden defaults.
+- Make states explicit with narrow functions, required inputs, discriminated data when useful, and early returns.
+- Use new tools or libraries when they clearly simplify the system and earn their dependency cost.
+
+## Task-Specific Instructions
+
+- Python tooling, dependency management, and local environments: [docs/agents/python-tooling.md](docs/agents/python-tooling.md)
+- Project layout and metadata conventions: [docs/agents/project-structure.md](docs/agents/project-structure.md)
+- Code quality, Ruff, ty, and architecture rules: [docs/agents/code-quality.md](docs/agents/code-quality.md)
+- Domain language guard and naming workflow: [docs/agents/domain-language.md](docs/agents/domain-language.md)
+- Pytest conventions: [docs/agents/testing.md](docs/agents/testing.md)
+- Verification gates and Makefile targets: [docs/agents/verification.md](docs/agents/verification.md)
+- Packaging, build, and release workflow: [docs/agents/packaging-release.md](docs/agents/packaging-release.md)
+- Domain documentation workflow: [docs/agents/domain.md](docs/agents/domain.md)
+- GitHub issue workflow: [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)
+- Triage labels: [docs/agents/triage-labels.md](docs/agents/triage-labels.md)
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in this repo's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context layout: `CONTEXT-MAP.md` at the repo root points to per-context `CONTEXT.md` files. See `docs/agents/domain.md`.
+Run `make domain-language` after changing domain names, signatures, public models, prompts, or glossary entries.
