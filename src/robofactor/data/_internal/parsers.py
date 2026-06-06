@@ -1,32 +1,38 @@
-from collections.abc import Callable
-from typing import Any, Protocol
+from collections.abc import Callable, Mapping
+from typing import Protocol, TypeIs
 
 from returns.result import Failure, Result, Success
 
+from robofactor.json_value import Json
+
+
+def _valid_value[T](value: T) -> Result[T, str]:
+    return Success(value)
+
 
 class Parser[T](Protocol):
-    """Protocol for all parsers."""
+    """Parser boundary for JSON input."""
 
-    def parse(self, raw_data: Any) -> Result[T, str]:
-        """Parse raw data into type T."""
+    def parse(self, raw_data: Json) -> Result[T, str]:
+        """Return typed data or a parse failure reason."""
         ...
 
 
-class BasicParser[T]:
-    """Basic parser for primitive types with validation."""
+class BasicParser[T: Json]:
+    """Validate a scalar value with an optional domain validator."""
 
     def __init__(
         self,
-        type_check: Callable[[Any], bool],
+        type_check: Callable[[Json], TypeIs[T]],
         type_name: str,
         validator: Callable[[T], Result[T, str]] | None = None,
     ):
         self.type_check = type_check
         self.type_name = type_name
-        self.validator = validator or (lambda x: Success(x))
+        self.validator = validator or _valid_value
 
-    def parse(self, raw_data: Any) -> Result[T, str]:
-        """Parse and validate raw data."""
+    def parse(self, raw_data: Json) -> Result[T, str]:
+        """Return the scalar value after type and domain validation."""
         if not self.type_check(raw_data):
             return Failure(f"Expected {self.type_name}, got {type(raw_data).__name__}")
 
@@ -34,13 +40,13 @@ class BasicParser[T]:
 
 
 class ListParser[T]:
-    """Parser for lists with element validation."""
+    """Parse a list by applying one parser to each element."""
 
     def __init__(self, element_parser: Parser[T]):
         self.element_parser = element_parser
 
-    def parse(self, raw_data: Any) -> Result[list[T], str]:
-        """Parse list with element validation."""
+    def parse(self, raw_data: Json) -> Result[list[T], str]:
+        """Return parsed elements or the first element failure."""
         if not isinstance(raw_data, list):
             return Failure(f"Expected list, got {type(raw_data).__name__}")
 
@@ -55,23 +61,23 @@ class ListParser[T]:
 
 
 class DictParser[T]:
-    """Parser for dictionaries with field validation."""
+    """Parse a mapping into a structured object."""
 
-    def __init__(self, field_parsers: dict[str, Parser[Any]], constructor: Callable[..., T]):
+    def __init__(self, field_parsers: Mapping[str, Parser[object]], constructor: Callable[..., T]):
         self.field_parsers = field_parsers
         self.constructor = constructor
 
-    def parse(self, raw_data: Any) -> Result[T, str]:
-        """Parse dictionary into structured object."""
+    def parse(self, raw_data: Json) -> Result[T, str]:
+        """Return the constructed object or the first field failure."""
         if not isinstance(raw_data, dict):
             return Failure(f"Expected dict, got {type(raw_data).__name__}")
 
-        parsed_fields = {}
+        parsed_fields: dict[str, object] = {}
         for field_name, parser in self.field_parsers.items():
-            field_value = raw_data.get(field_name)
-            if field_value is None:
+            if field_name not in raw_data:
                 return Failure(f"Missing required field: {field_name}")
 
+            field_value = raw_data[field_name]
             result = parser.parse(field_value)
             if isinstance(result, Failure):
                 return Failure(f"Error parsing field '{field_name}': {result.failure()}")
@@ -80,47 +86,13 @@ class DictParser[T]:
 
         try:
             return Success(self.constructor(**parsed_fields))
-        except Exception as e:
-            return Failure(f"Failed to construct object: {e!s}")
-
-
-class OptionalParser[T]:
-    """Parser for optional fields with default values."""
-
-    def __init__(self, inner_parser: Parser[T], default: T):
-        self.inner_parser = inner_parser
-        self.default = default
-
-    def parse(self, raw_data: Any) -> Result[T, str]:
-        """Parse with fallback to default value."""
-        if raw_data is None:
-            return Success(self.default)
-        return self.inner_parser.parse(raw_data)
-
-
-class TransformParser[T, U]:
-    """Parser that transforms parsed data using a function."""
-
-    def __init__(self, inner_parser: Parser[T], transform: Callable[[T], Result[U, str]]):
-        self.inner_parser = inner_parser
-        self.transform = transform
-
-    def parse(self, raw_data: Any) -> Result[U, str]:
-        """Parse and transform the result."""
-        return self.inner_parser.parse(raw_data).bind(self.transform)
-
-
-def parse[T](raw_data: Any, parser: Parser[T]) -> Result[T, str]:
-    """Universal parse function that works with any parser."""
-    return parser.parse(raw_data)
+        except (TypeError, ValueError) as error:
+            return Failure(f"Failed to construct object: {error!s}")
 
 
 __all__ = [
     "BasicParser",
     "DictParser",
     "ListParser",
-    "OptionalParser",
     "Parser",
-    "TransformParser",
-    "parse",
 ]

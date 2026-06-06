@@ -1,5 +1,6 @@
 from returns.result import Failure, Success
 
+from robofactor.checks import BehaviorTest
 from robofactor.data import examples
 
 
@@ -9,9 +10,11 @@ def test_get_examples_reads_training_file_success():
     exs = res.unwrap()
     assert isinstance(exs, list) and len(exs) > 0
     first = exs[0]
-    # dspy.Example stores data like a mapping
     assert hasattr(first, "code_snippet")
-    assert hasattr(first, "test_cases")
+    assert hasattr(first, "behavior_tests")
+    assert set(first.inputs().keys()) == {"code_snippet", "behavior_tests"}
+    assert isinstance(first.behavior_tests[0], BehaviorTest)
+    assert first.behavior_tests[0].case_id == "training-0"
 
 
 def test_get_examples_propagates_load_failure(monkeypatch):
@@ -23,4 +26,3 @@ def test_get_examples_propagates_load_failure(monkeypatch):
     res = examples.get_examples()
     assert isinstance(res, Failure)
     assert res.failure() == "boom"
-
