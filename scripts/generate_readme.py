@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Iterable
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 
 import typer
@@ -10,11 +10,11 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from typer.testing import CliRunner
 
+from robofactor.main import app as robofactor_app
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SRC_DIR = PROJECT_ROOT / "src" / "robofactor"
 README_PATH = PROJECT_ROOT / "README.md"
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
-MAKEFILE_PATH = PROJECT_ROOT / "Makefile"
 
 
 @dataclass(frozen=True)
@@ -24,83 +24,47 @@ class ProjectMeta:
 
 
 @dataclass(frozen=True)
-class ModuleApi:
-    module: str
-    signatures: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class ProjectContext:
     meta: ProjectMeta
-    cli_help: str | None
-    pyproject_text: str
-    makefile_text: str | None
-    modules: tuple[ModuleApi, ...]
+    cli_help: str
 
 
-def _list_source_modules(directory: Path) -> tuple[Path, ...]:
-    return (
-        tuple(p for p in directory.glob("*.py") if p.name != "__init__.py")
-        if directory.exists()
-        else ()
-    )
-
-
-def _read_makefile_optional() -> str | None:
-    try:
-        return MAKEFILE_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None
-
-
-def _capture_cli_help_optional() -> str | None:
-    """
-    Attempt to import the CLI app and capture `--help` output without dynamic imports.
-    Falls back to None if the module or `app` is unavailable.
-    """
-    try:
-        # Static import (no importlib usage)
-        from robofactor.main import app as app_obj
-
-        if not isinstance(app_obj, typer.Typer):
-            return None
-
-        result = CliRunner().invoke(app_obj, ["--help"], catch_exceptions=False)
-        return result.stdout if result.exit_code == 0 else None
-    except Exception:
-        return None
+def _capture_cli_help() -> str:
+    """Capture `robofactor --help` output from the imported CLI app."""
+    assert isinstance(robofactor_app, typer.Typer)
+    result = CliRunner().invoke(robofactor_app, ["--help"], catch_exceptions=False)
+    assert result.exit_code == 0, result.stdout
+    return result.stdout
 
 
 def _parse_pyproject_meta(text: str) -> ProjectMeta:
-    meta = tomllib.loads(text).get("project", {})
+    meta = tomllib.loads(text)["project"]
+    name = str(meta["name"]).strip()
+    assert name
     return ProjectMeta(
-        name=str(meta.get("name", "robofactor")).strip() or "robofactor",
-        description=str(meta.get("description", "")).strip(),
+        name=name,
+        description=str(meta["description"]).strip(),
     )
 
 
-def _format_installation(makefile_text: str | None) -> str:
-    if makefile_text and "uv " in makefile_text:
-        return (
-            "```bash\n"
-            "# Install (prod)\n"
-            "uv sync --no-dev\n\n"
-            "# Install (dev)\n"
-            "uv sync --all-groups\n\n"
-            "# Run CLI\n"
-            "uv run robofactor --help\n"
-            "```"
-        )
-    return "```bash\npip install .\n\n# Run CLI\npython -m robofactor.main --help\n```"
+def _format_installation() -> str:
+    return (
+        "```bash\n"
+        "# Install (prod)\n"
+        "uv sync --no-dev\n\n"
+        "# Install (dev)\n"
+        "uv sync --all-groups\n\n"
+        "# Run CLI\n"
+        "uv run robofactor --help\n"
+        "```"
+    )
 
 
-def _format_cli_usage(cli_help: str | None) -> str:
-    if not cli_help:
-        return "CLI is available via `robofactor --help`."
+def _format_cli_usage(cli_help: str) -> str:
     return f"```text\n{cli_help.strip()}\n```"
 
 
-def _format_api_section(_mods: Iterable[ModuleApi]) -> str:
+def _format_api_section() -> str:
     """
     Keep README generation deterministic without dynamic imports. We intentionally
     skip runtime module loading; API discovery can be added later with static analysis.
@@ -112,16 +76,11 @@ def _build_context() -> ProjectContext:
     py_text = PYPROJECT_PATH.read_text(encoding="utf-8")
     return ProjectContext(
         meta=_parse_pyproject_meta(py_text),
-        cli_help=_capture_cli_help_optional(),
-        pyproject_text=py_text,
-        makefile_text=_read_makefile_optional(),
-        modules=(),  # Purposely not loading modules dynamically
+        cli_help=_capture_cli_help(),
     )
 
 
 def _build_markdown(title: str, description: str, sections: list[tuple[str, str]]) -> str:
-    from itertools import chain
-
     toc_lines = (f"- [{name}](#{name.lower().replace(' ', '-')})" for name, _ in sections)
     section_parts = chain.from_iterable(
         ("", f"## {name}", "", content) for name, content in sections
@@ -135,13 +94,13 @@ def _build_markdown(title: str, description: str, sections: list[tuple[str, str]
 
 
 def _render_readme(ctx: ProjectContext) -> str:
-    title = ctx.meta.name.strip() or "robofactor"
+    title = ctx.meta.name
     description = ctx.meta.description.strip()
     sections: list[tuple[str, str]] = [
         ("Overview", description or "The robot who refactors."),
-        ("Installation", _format_installation(ctx.makefile_text)),
+        ("Installation", _format_installation()),
         ("CLI", _format_cli_usage(ctx.cli_help)),
-        ("API", _format_api_section(ctx.modules)),
+        ("API", _format_api_section()),
         (
             "Development",
             "- Lint: `uv run ruff check src tests`\n"
